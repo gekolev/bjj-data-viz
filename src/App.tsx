@@ -98,7 +98,7 @@ function App() {
   const [uploadedSessions, setUploadedSessions] = useState<Session[] | null>(null)
   const sessions = uploadedSessions ?? initialSessions
   const [activePage, setActivePage] = useState<'overview' | 'sessions'>('overview')
-  const [period, setPeriod] = useState('12 months')
+  const [period, setPeriod] = useState('All time')
   const [annualYear, setAnnualYear] = useState(new Date().getFullYear())
   const [query, setQuery] = useState('')
   const [styleFilter, setStyleFilter] = useState('All styles')
@@ -110,12 +110,12 @@ function App() {
   const availableYears = [...new Set(sessions.map((session) => session.date.getFullYear()))].sort((a, b) => a - b)
   const selectedYear = availableYears.includes(annualYear) ? annualYear : availableYears.at(-1) ?? newest.getFullYear()
   const filteredSessions = useMemo(() => {
-    const cutoff = new Date(newest)
-    if (period === '30 days') cutoff.setDate(cutoff.getDate() - 30)
-    else if (period === '90 days') cutoff.setDate(cutoff.getDate() - 90)
-    else if (period === 'This year') cutoff.setMonth(0, 1)
-    else cutoff.setFullYear(cutoff.getFullYear() - 1)
-    return sessions.filter((session) => session.date >= cutoff && (styleFilter === 'All styles' || session.style === styleFilter)
+    const cutoff = period === 'All time' ? null : new Date(newest)
+    if (cutoff && period === '30 days') cutoff.setDate(cutoff.getDate() - 30)
+    else if (cutoff && period === '90 days') cutoff.setDate(cutoff.getDate() - 90)
+    else if (cutoff && period === 'This year') cutoff.setMonth(0, 1)
+    else if (cutoff) cutoff.setFullYear(cutoff.getFullYear() - 1)
+    return sessions.filter((session) => (!cutoff || session.date >= cutoff) && (styleFilter === 'All styles' || session.style === styleFilter)
       && `${session.training} ${session.instructor} ${session.classType} ${session.venue}`.toLowerCase().includes(query.toLowerCase()))
   }, [newest, period, query, sessions, styleFilter])
 
@@ -240,7 +240,7 @@ function App() {
           {uploadMessage && uploadMessage.includes('Please') || uploadMessage.startsWith('No sessions') || uploadMessage.startsWith('We couldn’t') ? <div className="upload-error"><X size={14} />{uploadMessage}</div> : null}
 
           {activePage === 'overview' ? <>
-            <div className="section-toolbar"><div className="section-title"><span className="live-dot" /> AT A GLANCE</div><div className="toolbar-controls"><span className="updated-label">Based on {filteredSessions.length} sessions</span><label className="select-wrap"><CalendarDays size={14} /><select value={period} onChange={(event) => setPeriod(event.target.value)}><option>12 months</option><option>90 days</option><option>30 days</option><option>This year</option></select><ChevronDown size={13} /></label></div></div>
+            <div className="section-toolbar"><div className="section-title"><span className="live-dot" /> AT A GLANCE</div><div className="toolbar-controls"><span className="updated-label">Based on {filteredSessions.length} sessions</span><label className="select-wrap"><CalendarDays size={14} /><select value={period} onChange={(event) => setPeriod(event.target.value)}><option>All time</option><option>12 months</option><option>90 days</option><option>30 days</option><option>This year</option></select><ChevronDown size={13} /></label></div></div>
 
             <div className="stats-grid">
               <article className="stat-card"><div className="stat-top"><span>Total sessions</span><span className="stat-icon green"><Dumbbell size={16} /></span></div><div className="stat-value">{filteredSessions.length}<span className="stat-unit">sessions</span></div><div className="stat-foot"><span className="stat-accent"><ArrowUpRight size={13} /> Keep showing up</span><span>since you started</span></div></article>
