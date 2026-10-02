@@ -95,7 +95,8 @@ const shortDate = (date: Date) => new Intl.DateTimeFormat('en', { month: 'short'
 const COLORS = ['#cbf36b', '#c7b7ff', '#f7a68c']
 
 function App() {
-  const [sessions, setSessions] = useState(initialSessions)
+  const [uploadedSessions, setUploadedSessions] = useState<Session[] | null>(null)
+  const sessions = uploadedSessions ?? initialSessions
   const [activePage, setActivePage] = useState<'overview' | 'sessions'>('overview')
   const [period, setPeriod] = useState('12 months')
   const [annualYear, setAnnualYear] = useState(new Date().getFullYear())
@@ -184,10 +185,12 @@ function App() {
       setUploadMessage('Please choose a .csv file.')
       return
     }
+    // Once the user chooses a CSV, stop using the built-in sample rows.
+    setUploadedSessions([])
     sessionsFromCsv(file, (rows, error) => {
       if (error) setUploadMessage(error)
       else {
-        setSessions(rows)
+        setUploadedSessions(rows)
         if (rows.length) setAnnualYear(Math.max(...rows.map((row) => row.date.getFullYear())))
         setUploadMessage(`${rows.length} sessions imported from ${file.name}`)
       }
