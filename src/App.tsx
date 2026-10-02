@@ -1,7 +1,7 @@
-import { useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
 import Papa from 'papaparse'
 import {
-  Activity, ArrowDownToLine, ArrowUpRight, CalendarDays,
+  Activity, ArrowDownToLine, ArrowUpRight, Box, CalendarDays,
   ChevronDown, ChevronRight, CircleHelp, Clock3, Dumbbell,
   FileSpreadsheet, Filter, Flame, MapPin, MoreHorizontal, Search, Sparkles,
   Upload, Users, X,
@@ -11,6 +11,8 @@ import {
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import './App.css'
+import DevPage from './DevPage'
+import TrainingCalendar from './TrainingCalendar'
 
 type Session = {
   id: number
@@ -93,11 +95,18 @@ const formatDuration = (minutes: number) => {
 
 const shortDate = (date: Date) => new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(date)
 const COLORS = ['#cbf36b', '#c7b7ff', '#f7a68c']
+type Page = 'overview' | 'sessions' | 'dev'
+
+function pageFromPath(): Page {
+  if (window.location.pathname === '/dev') return 'dev'
+  if (window.location.pathname === '/sessions') return 'sessions'
+  return 'overview'
+}
 
 function App() {
   const [uploadedSessions, setUploadedSessions] = useState<Session[] | null>(null)
   const sessions = uploadedSessions ?? initialSessions
-  const [activePage, setActivePage] = useState<'overview' | 'sessions'>('overview')
+  const [activePage, setActivePage] = useState<Page>(pageFromPath)
   const [period, setPeriod] = useState('All time')
   const [annualYear, setAnnualYear] = useState(new Date().getFullYear())
   const [query, setQuery] = useState('')
@@ -106,9 +115,21 @@ function App() {
   const [dragging, setDragging] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
+  const goToPage = (page: Page) => {
+    const route = page === 'overview' ? '/' : `/${page}`
+    if (window.location.pathname !== route) window.history.pushState({}, '', route)
+    setActivePage(page)
+  }
+
+  useEffect(() => {
+    const syncRoute = () => setActivePage(pageFromPath())
+    window.addEventListener('popstate', syncRoute)
+    return () => window.removeEventListener('popstate', syncRoute)
+  }, [])
+
   const newest = sessions.reduce((latest, row) => row.date > latest ? row.date : latest, new Date(0))
   const availableYears = [...new Set(sessions.map((session) => session.date.getFullYear()))].sort((a, b) => a - b)
-  const selectedYear = availableYears.includes(annualYear) ? annualYear : availableYears.at(-1) ?? newest.getFullYear()
+  const selectedYear = availableYears.includes(annualYear) ? annualYear : availableYears.at(-1) ?? annualYear
   const filteredSessions = useMemo(() => {
     const cutoff = period === 'All time' ? null : new Date(newest)
     if (cutoff && period === '30 days') cutoff.setDate(cutoff.getDate() - 30)
@@ -219,8 +240,9 @@ function App() {
       <aside className="sidebar">
         <div className="brand"><div className="brand-mark"><Activity size={19} strokeWidth={2.5} /></div><span>mat<span className="brand-light">metrics</span></span></div>
         <div className="workspace-label">WORKSPACE</div>
-        <button className={`nav-item ${activePage === 'overview' ? 'active' : ''}`} onClick={() => setActivePage('overview')}><Activity size={17} /> Overview</button>
-        <button className={`nav-item ${activePage === 'sessions' ? 'active' : ''}`} onClick={() => setActivePage('sessions')}><CalendarDays size={17} /> Sessions <span className="nav-count">{sessions.length}</span></button>
+        <button className={`nav-item ${activePage === 'overview' ? 'active' : ''}`} onClick={() => goToPage('overview')}><Activity size={17} /> Overview</button>
+        <button className={`nav-item ${activePage === 'sessions' ? 'active' : ''}`} onClick={() => goToPage('sessions')}><CalendarDays size={17} /> Sessions <span className="nav-count">{sessions.length}</span></button>
+        <button className={`nav-item ${activePage === 'dev' ? 'active' : ''}`} onClick={() => goToPage('dev')}><Box size={17} /> 3D Data Lab <span className="nav-badge">NEW</span></button>
         <div className="sidebar-divider" />
         <button className="nav-item quiet" onClick={downloadTemplate}><FileSpreadsheet size={17} /> CSV template</button>
         <div className="sidebar-bottom">
@@ -230,16 +252,16 @@ function App() {
       </aside>
 
       <main className="main-area">
-        <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><strong>{activePage === 'overview' ? 'Overview' : 'Sessions'}</strong></div><div className="top-actions"><span className="sync-status"><span className="status-dot" /> All changes saved</span><button className="icon-button" aria-label="Help"><CircleHelp size={17} /></button><div className="top-avatar">B</div></div></header>
+        <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><strong>{activePage === 'overview' ? 'Overview' : activePage === 'sessions' ? 'Sessions' : '3D Data Lab'}</strong></div><div className="top-actions"><span className="sync-status"><span className="status-dot" /> All changes saved</span><button className="icon-button" aria-label="Help"><CircleHelp size={17} /></button><div className="top-avatar">B</div></div></header>
         <div className="content">
-          <div className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot" /> YOUR JIU-JITSU JOURNEY</div><h1>{activePage === 'overview' ? 'Training overview' : 'Training sessions'}</h1><p>A little progress every day adds up to a lot.</p></div><div className="heading-actions"><button className="button button-outline" onClick={downloadTemplate}><ArrowDownToLine size={15} /> Template</button><button className="button button-primary" onClick={() => fileRef.current?.click()}><Upload size={15} /> Import CSV</button><input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFileChange} hidden /></div></div>
+          <div className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot" /> YOUR JIU-JITSU JOURNEY</div><h1>{activePage === 'overview' ? 'Training overview' : activePage === 'sessions' ? 'Training sessions' : '3D Data Lab'}</h1><p>A little progress every day adds up to a lot.</p></div><div className="heading-actions"><button className="button button-outline" onClick={downloadTemplate}><ArrowDownToLine size={15} /> Template</button><button className="button button-primary" onClick={() => fileRef.current?.click()}><Upload size={15} /> Import CSV</button><input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFileChange} hidden /></div></div>
 
           <div className="import-strip" onClick={() => fileRef.current?.click()} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter') fileRef.current?.click() }}>
             <div className="import-icon"><FileSpreadsheet size={17} /></div><div className="import-copy"><strong>{uploadMessage || 'Your data, your dashboard'}</strong><span>{uploadMessage ? 'Your CSV stays in this browser session.' : 'Drop a CSV anywhere or click to upload. Your data never leaves your device.'}</span></div><button className="text-button" onClick={(event) => { event.stopPropagation(); fileRef.current?.click() }}>Choose file <ArrowUpRight size={14} /></button>
           </div>
           {uploadMessage && uploadMessage.includes('Please') || uploadMessage.startsWith('No sessions') || uploadMessage.startsWith('We couldn’t') ? <div className="upload-error"><X size={14} />{uploadMessage}</div> : null}
 
-          {activePage === 'overview' ? <>
+          {activePage === 'dev' ? <DevPage sessions={sessions} /> : activePage === 'overview' ? <>
             <div className="section-toolbar"><div className="section-title"><span className="live-dot" /> AT A GLANCE</div><div className="toolbar-controls"><span className="updated-label">Based on {filteredSessions.length} sessions</span><label className="select-wrap"><CalendarDays size={14} /><select value={period} onChange={(event) => setPeriod(event.target.value)}><option>All time</option><option>12 months</option><option>90 days</option><option>30 days</option><option>This year</option></select><ChevronDown size={13} /></label></div></div>
 
             <div className="stats-grid">
@@ -248,6 +270,8 @@ function App() {
               <article className="stat-card"><div className="stat-top"><span>This month</span><span className="stat-icon orange"><Flame size={16} /></span></div><div className="stat-value">{metrics.thisMonth}<span className="stat-unit">sessions</span></div><div className="stat-foot"><span>{new Intl.DateTimeFormat('en', { month: 'long' }).format(newest)}</span><span>{newest.getFullYear()}</span></div></article>
               <article className="stat-card"><div className="stat-top"><span>Favorite style</span><span className="stat-icon blue"><Users size={16} /></span></div><div className="stat-value stat-word">{metrics.mostFrequent}</div><div className="stat-foot"><span>{metrics.gi} Gi · {metrics.noGi} No-Gi</span><span>sessions</span></div></article>
             </div>
+
+            <TrainingCalendar sessions={sessions} year={selectedYear} years={availableYears} onYearChange={setAnnualYear} styleFilter={styleFilter} query={query} />
 
             <div className="charts-grid">
               <section className="panel activity-panel"><div className="panel-heading"><div><h2>Training activity</h2><p>Yearly attendance · busiest month: {busiestMonth.sessions ? busiestMonth.month : '—'}</p><p className="chart-explanation">Green bars count sessions; purple bars show mat hours. Months without sessions remain visible as zero.</p></div><label className="year-select"><span>YEAR</span><select value={selectedYear} onChange={(event) => setAnnualYear(Number(event.target.value))}>{availableYears.map((year) => <option key={year} value={year}>{year}</option>)}</select><ChevronDown size={12} /></label></div><div className="chart-legend"><span><i className="legend-swatch lime" />Sessions</span><span><i className="legend-swatch lavender" />Hours on mat</span></div><div className="activity-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={annualData} margin={{ top: 7, right: 12, left: -18, bottom: 0 }} barGap={3}><CartesianGrid vertical={false} stroke="#eeeee9" strokeDasharray="4 5" /><XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fill: '#96978e', fontSize: 10 }} dy={10} /><YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: '#96978e', fontSize: 10 }} /><Tooltip cursor={{ fill: '#f6f7f1' }} contentStyle={{ border: '1px solid #e9eae4', borderRadius: 10, fontSize: 12, boxShadow: '0 8px 25px #25291b12' }} /><Bar dataKey="sessions" name="Sessions" fill="#c7ec69" radius={[5, 5, 0, 0]} maxBarSize={19} /><Bar dataKey="hours" name="Hours on mat" fill="#c9baf6" radius={[5, 5, 0, 0]} maxBarSize={19} /></BarChart></ResponsiveContainer></div><div className="chart-bottom"><span><span className="bottom-dot" /> {annualData.reduce((sum, item) => sum + item.sessions, 0)} sessions in {selectedYear}</span><span>{selectedYear} <CalendarDays size={13} /></span></div></section>
