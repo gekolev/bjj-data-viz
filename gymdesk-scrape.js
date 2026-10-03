@@ -128,7 +128,13 @@
 
     const a = document.createElement("a");
     a.href = downloadUrl;
-    a.download = "gymdesk-all-attendance.csv";
+    const downloadedAt = new Date();
+    const downloadDate = [
+        downloadedAt.getFullYear(),
+        String(downloadedAt.getMonth() + 1).padStart(2, "0"),
+        String(downloadedAt.getDate()).padStart(2, "0")
+    ].join("-");
+    a.download = `gymdesk-all-attendance-${downloadDate}.csv`;
 
     document.body.appendChild(a);
     a.click();

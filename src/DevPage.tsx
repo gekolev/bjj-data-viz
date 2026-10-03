@@ -1,11 +1,12 @@
 import ChartFrame from './components/ChartFrame'
+import SessionSpiral from './SessionSpiral'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
 import { ArrowUpRight, CalendarDays, RotateCcw, X } from 'lucide-react'
 
-type Session = {
+export type Session = {
   id: number
   training: string
   date: Date
@@ -243,6 +244,7 @@ export default function DevPage({ sessions }: { sessions: Session[] }) {
       <div className="calendar-legend"><div>{Object.entries(COLORS).map(([name, color]) => <span key={name}><i style={{ background: color }} />{name === 'NoGi' ? 'No-Gi' : name}</span>)}<span><i style={{ background: '#263246' }} />No training</span></div><span>Height = mat time · Color = style with most minutes that day</span></div>
     </section></ChartFrame>
     <section className="calendar-detail"><div className="calendar-detail-title"><div><span className="calendar-kicker">DAY EXPLORER</span><h3>{selected ? new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).format(selected.date) : 'Every tile has a story.'}</h3></div>{selected && <button aria-label="Close day details" onClick={() => setSelectedKey(null)}><X size={16} /></button>}</div>{selected ? <><p>{selected.sessions.length} sessions · {selected.minutes} minutes on the mat</p>{selected.sessions.length ? <div className="calendar-session-list">{[...selected.sessions].sort((a, b) => a.date.getTime() - b.date.getTime()).map(s => <article key={s.id}><i style={{ background: COLORS[s.style] }} /><div><strong>{s.classType} <span>{s.style === 'NoGi' ? 'No-Gi' : s.style}</span></strong><small>{s.instructor} · {s.venue}</small></div><time>{new Intl.DateTimeFormat('en', { hour: 'numeric', minute: '2-digit' }).format(s.date)}</time><b>{s.duration} min</b></article>)}</div> : <p className="calendar-detail-hint">No sessions logged on this day.</p>}</> : <p className="calendar-detail-hint">Select a day in the atlas to see its classes, coaches, and mat time.</p>}</section>
+    <SessionSpiral sessions={sessions} />
   </div>
 }
 

@@ -20,6 +20,9 @@ test('exports from the current gym, reads fetched cells, deduplicates, and stops
   const context = {
     window: { location: { origin: 'https://my-own-gym.gymdesk.com' } },
     console: { log() {} }, URL: TestURL, Blob,
+    Date: class extends Date {
+      constructor() { super(2026, 9, 3, 0, 15) }
+    },
     fetch: async (url, options) => {
       requests.push({ url, options })
       return { ok: true, text: async () => String(Math.min(requests.length - 1, 1)) }
@@ -39,7 +42,7 @@ test('exports from the current gym, reads fetched cells, deduplicates, and stops
   await vm.runInNewContext(source, context)
   assert.equal(requests.length, 3)
   assert.ok(requests.every(request => request.url.startsWith('https://my-own-gym.gymdesk.com/members/attendance?') && request.options.credentials === 'include'))
-  assert.equal(downloadedName, 'gymdesk-all-attendance.csv')
+  assert.equal(downloadedName, 'gymdesk-all-attendance-2026-10-03.csv')
   assert.ok(clicked)
   const csv = await exportedBlob.text()
   assert.equal(csv.trim().split('\n').length, 3)
