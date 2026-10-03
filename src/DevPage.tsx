@@ -1,4 +1,5 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react'
+import ChartFrame from './components/ChartFrame'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
@@ -183,7 +184,10 @@ export default function DevPage({ sessions }: { sessions: Session[] }) {
       ring.position.set(day.week * gap, height - 0.08, day.weekday * gap)
       ring.visible = true
       const rect = host.getBoundingClientRect()
-      setHover({ day, x: Math.min(event.clientX - rect.left + 16, Math.max(8, rect.width - 210)), y: Math.max(8, event.clientY - rect.top - 85) })
+      const scaleX = rect.width / host.clientWidth
+      const scaleY = rect.height / host.clientHeight
+      const expanded = host.closest('dialog')?.open
+      setHover({ day, x: Math.min((event.clientX - rect.left) / scaleX + 16, Math.max(8, host.clientWidth - (expanded ? 310 : 210))), y: Math.max(8, (event.clientY - rect.top) / scaleY - (expanded ? 140 : 85)) })
       renderer.domElement.style.cursor = 'pointer'
     }
     let down = { x: 0, y: 0 }
@@ -233,11 +237,11 @@ export default function DevPage({ sessions }: { sessions: Session[] }) {
   return <div className="calendar-lab">
     <div className="calendar-intro"><div><span className="calendar-kicker">A YEAR ON THE MAT</span><h2>Your training, in rhythm.</h2><p>One tile for every day. Every session leaves its mark.</p></div><span className="calendar-year-stamp">{year ?? '—'}</span></div>
     <div className="calendar-metrics"><div><span>SESSIONS</span><strong>{visible.length}</strong></div><div><span>MAT TIME</span><strong>{hours(minutes)}</strong></div><div><span>ACTIVE DAYS</span><strong>{activeDays}</strong></div><div><span>BIGGEST DAY</span><strong>{busiest ? hours(busiest.minutes) : '—'}</strong><small>{busiest ? dateLabel(busiest.date) : 'No sessions yet'}</small></div></div>
-    <section className="calendar-explorer">
+    <ChartFrame title="Training atlas"><section className="calendar-explorer">
       <div className="calendar-controls"><span className="calendar-scene-title"><CalendarDays size={15} /> TRAINING ATLAS</span><div className="calendar-control-group"><select aria-label="Training year" value={year ?? ''} onChange={e => { setYearChoice(Number(e.target.value)); setSelectedKey(null); setHover(null) }}>{years.length ? years.map(y => <option key={y}>{y}</option>) : <option value="">No data</option>}</select><div className="calendar-segments" role="group" aria-label="Training style">{['All styles', 'Gi', 'NoGi', 'Other'].map(s => <button key={s} className={style === s ? 'active' : ''} onClick={() => { setStyle(s); setSelectedKey(null); setHover(null) }}>{s === 'NoGi' ? 'No-Gi' : s}</button>)}</div><button className="calendar-view" onClick={() => { setFlat(!flat); setHover(null) }}>{flat ? '3D view' : 'Top view'}</button><button className="calendar-view" aria-label="Reset camera" onClick={() => resetRef.current?.()}><RotateCcw size={14} /></button></div></div>
       <div className="calendar-stage"><div ref={mountRef} className="three-canvas" aria-label="Interactive training calendar. Columns are weeks, rows are Monday through Sunday. Colored tiles mark training days and taller tiles show more mat time." /><div className="calendar-stage-note"><span>ONE YEAR. YOUR STORY.</span><small>Weeks → &nbsp; / &nbsp; weekdays ↓</small></div>{hover && <div className="calendar-tooltip" style={{ left: hover.x, top: hover.y }}><strong>{new Intl.DateTimeFormat('en', { weekday: 'short', month: 'short', day: 'numeric' }).format(hover.day.date)}</strong><span>{hover.day.sessions.length ? `${hover.day.sessions.length} sessions · ${hover.day.minutes} min` : 'No training logged'}</span><small>Click to explore this day <ArrowUpRight size={11} /></small></div>}{(webglError || !days.length) && <div className="calendar-empty"><CalendarDays size={30} /><strong>{webglError ? '3D graphics are unavailable' : 'Your calendar starts here'}</strong><span>{webglError ? 'Try a browser with WebGL enabled.' : 'Import your training CSV to fill your atlas.'}</span></div>}<div className="calendar-gestures">{flat ? 'DRAG TO PAN' : 'DRAG TO ORBIT'} <span>·</span> SCROLL TO ZOOM <span>·</span> CLICK A DAY</div></div>
       <div className="calendar-legend"><div>{Object.entries(COLORS).map(([name, color]) => <span key={name}><i style={{ background: color }} />{name === 'NoGi' ? 'No-Gi' : name}</span>)}<span><i style={{ background: '#263246' }} />No training</span></div><span>Height = mat time · Color = style with most minutes that day</span></div>
-    </section>
+    </section></ChartFrame>
     <section className="calendar-detail"><div className="calendar-detail-title"><div><span className="calendar-kicker">DAY EXPLORER</span><h3>{selected ? new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).format(selected.date) : 'Every tile has a story.'}</h3></div>{selected && <button aria-label="Close day details" onClick={() => setSelectedKey(null)}><X size={16} /></button>}</div>{selected ? <><p>{selected.sessions.length} sessions · {selected.minutes} minutes on the mat</p>{selected.sessions.length ? <div className="calendar-session-list">{[...selected.sessions].sort((a, b) => a.date.getTime() - b.date.getTime()).map(s => <article key={s.id}><i style={{ background: COLORS[s.style] }} /><div><strong>{s.classType} <span>{s.style === 'NoGi' ? 'No-Gi' : s.style}</span></strong><small>{s.instructor} · {s.venue}</small></div><time>{new Intl.DateTimeFormat('en', { hour: 'numeric', minute: '2-digit' }).format(s.date)}</time><b>{s.duration} min</b></article>)}</div> : <p className="calendar-detail-hint">No sessions logged on this day.</p>}</> : <p className="calendar-detail-hint">Select a day in the atlas to see its classes, coaches, and mat time.</p>}</section>
   </div>
 }

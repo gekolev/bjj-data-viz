@@ -1,6 +1,7 @@
 (async () => {
-    const BASE_URL = "https://twistedjiujitsu.gymdesk.com/members/attendance";
+    const BASE_URL = new URL("/members/attendance", window.location.origin).href;
     const allRows = [];
+    const seenPages = new Set();
 
     function extractRowsFromDocument(doc) {
         const tables = [...doc.querySelectorAll("table")];
@@ -18,7 +19,7 @@
         return [...table.querySelectorAll("tbody tr")]
             .map(row =>
                 [...row.querySelectorAll("td")].map(td =>
-                    td.innerText.trim().replace(/\s+/g, " ")
+                    td.textContent.trim().replace(/\s+/g, " ")
                 )
             )
             .filter(row => row.length >= 2);
@@ -67,6 +68,13 @@
             );
             break;
         }
+
+        const pageSignature = JSON.stringify(rows);
+        if (seenPages.has(pageSignature)) {
+            console.log(`Page ${page} repeats a previous page. Reached the end.`);
+            break;
+        }
+        seenPages.add(pageSignature);
 
         console.log(
             `Page ${page}: ${rows.length} attendance records`

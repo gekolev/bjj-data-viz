@@ -4,15 +4,23 @@ import {
   Activity, ArrowDownToLine, ArrowUpRight, Box, CalendarDays,
   ChevronDown, ChevronRight, CircleHelp, Clock3, Dumbbell,
   FileSpreadsheet, Filter, Flame, MapPin, MoreHorizontal, Search, Sparkles,
-  Upload, Users, X,
+  Upload, Users, X, Maximize2, BookOpen,
 } from 'lucide-react'
 import {
-  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Line, LineChart,
-  Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  AreaChart, BarChart, CartesianGrid, Cell, LineChart,
+  PieChart, ResponsiveContainer, Tooltip,
 } from 'recharts'
 import './App.css'
 import DevPage from './DevPage'
 import TrainingCalendar from './TrainingCalendar'
+import ChartFrame from './components/ChartFrame'
+import { ChartXAxis as XAxis, ChartYAxis as YAxis } from './components/ChartAxes'
+import TrainingTimeline from './components/TrainingTimeline'
+import { AnimatedArea as Area, AnimatedBar as Bar, AnimatedLine as Line, AnimatedPie as Pie } from './components/AnimatedChartSeries'
+import { allocateTrainingStyles } from './lib/allocateTrainingStyles'
+import InstructionsPage from './InstructionsPage'
+import { loadCsvImport, saveCsvImport, removeCsvImport, type CsvImport } from './lib/importStorage'
+import SessionBrowser from './components/SessionBrowser'
 
 type Session = {
   id: number
@@ -20,6 +28,7 @@ type Session = {
   date: Date
   duration: number
   style: 'Gi' | 'NoGi' | 'Other'
+  styleEstimated?: boolean
   classType: string
   venue: string
   instructor: string
@@ -50,7 +59,7 @@ function parseSession(training: string, dateText: string, id: number, durationTe
   const date = new Date(dateMatch?.[1] ?? dateText)
   if (Number.isNaN(date.getTime())) return null
   const [details, instructorText = ''] = training.split('|')
-  const parts = details.split('-').map((part) => part.trim()).filter(Boolean)
+  const parts = details.replace(/\bno\s*-\s*gi\b/gi, 'NoGi').split('-').map((part) => part.trim()).filter(Boolean)
   const classType = parts[0] ?? 'Training'
   const styleText = parts.find((part) => /^(no\s*-?\s*gi|gi)$/i.test(part)) ?? ''
   const style: Session['style'] = /nogi|no\s*-?\s*gi/i.test(styleText) ? 'NoGi' : /^gi$/i.test(styleText) ? 'Gi' : 'Other'
@@ -95,17 +104,44 @@ const formatDuration = (minutes: number) => {
 
 const shortDate = (date: Date) => new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(date)
 const COLORS = ['#cbf36b', '#c7b7ff', '#f7a68c']
-type Page = 'overview' | 'sessions' | 'dev'
+type Page = 'overview' | 'sessions' | 'dev' | 'instructions'
 
 function pageFromPath(): Page {
+  if (window.location.pathname === '/instructions') return 'instructions'
   if (window.location.pathname === '/dev') return 'dev'
   if (window.location.pathname === '/sessions') return 'sessions'
   return 'overview'
 }
 
 function App() {
-  const [uploadedSessions, setUploadedSessions] = useState<Session[] | null>(null)
-  const sessions = uploadedSessions ?? initialSessions
+  const [fillScreen, setFillScreen] = useState(() => {
+    try { return localStorage.getItem('matmetrics-fill-screen') === 'true' }
+    catch { return false }
+  })
+
+  useEffect(() => {
+    const updateScale = () => {
+      // Keep a comfortable desktop layout while scaling every pixel together.
+      const scale = fillScreen ? Math.max(1, Math.min(1.75, window.innerWidth / 1600)) : 1
+      document.body.style.setProperty('--screen-scale', String(scale))
+      document.body.classList.toggle('fill-screen', fillScreen)
+    }
+    updateScale()
+    try { localStorage.setItem('matmetrics-fill-screen', String(fillScreen)) } catch { /* Storage can be unavailable in private browsers. */ }
+    window.addEventListener('resize', updateScale)
+    return () => {
+      window.removeEventListener('resize', updateScale)
+      document.body.style.removeProperty('--screen-scale')
+      document.body.classList.remove('fill-screen')
+    }
+  }, [fillScreen])
+
+  const [csvImport, setCsvImport] = useState<CsvImport | null>(() => loadCsvImport())
+  const [savedLocally, setSavedLocally] = useState(true)
+  const [storageMessage, setStorageMessage] = useState('')
+  const sourceSessions = csvImport?.sessions ?? initialSessions
+  const allocation = useMemo(() => allocateTrainingStyles(sourceSessions), [sourceSessions])
+  const sessions = allocation.sessions
   const [activePage, setActivePage] = useState<Page>(pageFromPath)
   const [period, setPeriod] = useState('All time')
   const [annualYear, setAnnualYear] = useState(new Date().getFullYear())
@@ -114,6 +150,7 @@ function App() {
   const [uploadMessage, setUploadMessage] = useState('')
   const [dragging, setDragging] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const importRequest = useRef(0)
 
   const goToPage = (page: Page) => {
     const route = page === 'overview' ? '/' : `/${page}`
@@ -206,19 +243,43 @@ function App() {
       setUploadMessage('Please choose a .csv file.')
       return
     }
-    // Once the user chooses a CSV, stop using the built-in sample rows.
-    setUploadedSessions([])
+    const request = ++importRequest.current
+    setUploadMessage(`Reading ${file.name}...`)
     sessionsFromCsv(file, (rows, error) => {
+      if (request !== importRequest.current) return
       if (error) setUploadMessage(error)
       else {
-        setUploadedSessions(rows)
+        const nextImport = { fileName: file.name, sessions: rows }
+        const saved = saveCsvImport(nextImport)
+        const cleared = saved || removeCsvImport()
+        setCsvImport(nextImport)
+        setSavedLocally(saved)
+        setStorageMessage(saved ? '' : cleared ? 'Browser storage is unavailable or full. This CSV is loaded for this session only; refresh will clear it.' : 'This CSV could not be saved, and the previous saved CSV could not be cleared. Refresh may restore the previous file. Clear this site’s browser data to remove it.')
         if (rows.length) setAnnualYear(Math.max(...rows.map((row) => row.date.getFullYear())))
         setUploadMessage(`${rows.length} sessions imported from ${file.name}`)
       }
     })
   }
 
-  const onFileChange = (event: ChangeEvent<HTMLInputElement>) => handleFiles(event.target.files)
+  const onFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    handleFiles(event.target.files)
+    event.target.value = ''
+  }
+  const removeFile = () => {
+    if (!removeCsvImport()) {
+      setStorageMessage('The saved CSV could not be removed. Allow browser storage access and try again, or clear this site’s browser data.')
+      return
+    }
+    importRequest.current++
+    setCsvImport(null)
+    setSavedLocally(true)
+    setStorageMessage('')
+    setUploadMessage('CSV removed from this browser. Showing sample data.')
+    setQuery('')
+    setStyleFilter('All styles')
+    setPeriod('All time')
+    if (fileRef.current) fileRef.current.value = ''
+  }
   const onDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault()
     setDragging(false)
@@ -244,6 +305,7 @@ function App() {
         <button className={`nav-item ${activePage === 'sessions' ? 'active' : ''}`} onClick={() => goToPage('sessions')}><CalendarDays size={17} /> Sessions <span className="nav-count">{sessions.length}</span></button>
         <button className={`nav-item ${activePage === 'dev' ? 'active' : ''}`} onClick={() => goToPage('dev')}><Box size={17} /> 3D Data Lab <span className="nav-badge">NEW</span></button>
         <div className="sidebar-divider" />
+        <button className={`nav-item ${activePage === 'instructions' ? 'active' : ''}`} onClick={() => goToPage('instructions')}><BookOpen size={17} /> Get your CSV</button>
         <button className="nav-item quiet" onClick={downloadTemplate}><FileSpreadsheet size={17} /> CSV template</button>
         <div className="sidebar-bottom">
           <div className="coach-card"><div className="coach-icon"><Sparkles size={16} /></div><strong>Make every round count.</strong><span>Your mat time, made visible.</span><button onClick={() => fileRef.current?.click()}>Import training data <ArrowUpRight size={13} /></button></div>
@@ -252,16 +314,18 @@ function App() {
       </aside>
 
       <main className="main-area">
-        <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><strong>{activePage === 'overview' ? 'Overview' : activePage === 'sessions' ? 'Sessions' : '3D Data Lab'}</strong></div><div className="top-actions"><span className="sync-status"><span className="status-dot" /> All changes saved</span><button className="icon-button" aria-label="Help"><CircleHelp size={17} /></button><div className="top-avatar">B</div></div></header>
+        <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><strong>{activePage === 'overview' ? 'Overview' : activePage === 'sessions' ? 'Sessions' : activePage === 'instructions' ? 'Get your CSV' : '3D Data Lab'}</strong></div><div className="top-actions">{csvImport && <div className="current-csv" title={`${csvImport.fileName} — ${savedLocally ? 'Saved only in this browser' : 'Session only'}`}><FileSpreadsheet size={15} /><span className="current-csv-name">{csvImport.fileName}</span><button className="current-csv-remove" aria-label={`Remove ${csvImport.fileName} and delete its saved data`} title="Remove CSV and delete saved data" onClick={removeFile}><X size={14} /></button></div>}<button className="screen-toggle" aria-pressed={fillScreen} title="Expand the layout and scale the interface to fit your screen" onClick={() => setFillScreen((enabled) => !enabled)}><Maximize2 size={15} /><span>Fill screen</span><span className="screen-toggle-track" aria-hidden="true"><span /></span></button><span className="sync-status"><span className="status-dot" /> {csvImport ? savedLocally ? 'Saved in this browser' : 'Session only' : 'Sample data'}</span><button className="icon-button" aria-label="CSV export instructions" onClick={() => goToPage('instructions')}><CircleHelp size={17} /></button><div className="top-avatar">B</div></div></header>
         <div className="content">
-          <div className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot" /> YOUR JIU-JITSU JOURNEY</div><h1>{activePage === 'overview' ? 'Training overview' : activePage === 'sessions' ? 'Training sessions' : '3D Data Lab'}</h1><p>A little progress every day adds up to a lot.</p></div><div className="heading-actions"><button className="button button-outline" onClick={downloadTemplate}><ArrowDownToLine size={15} /> Template</button><button className="button button-primary" onClick={() => fileRef.current?.click()}><Upload size={15} /> Import CSV</button><input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFileChange} hidden /></div></div>
+          <div className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot" /> YOUR JIU-JITSU JOURNEY</div><h1>{activePage === 'overview' ? 'Training overview' : activePage === 'sessions' ? 'Training sessions' : activePage === 'instructions' ? 'Get your training data' : '3D Data Lab'}</h1><p>A little progress every day adds up to a lot.</p></div><div className="heading-actions"><button className="button button-outline" onClick={downloadTemplate}><ArrowDownToLine size={15} /> Template</button><button className="button button-primary" onClick={() => fileRef.current?.click()}><Upload size={15} /> Import CSV</button><input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFileChange} hidden /></div></div>
 
           <div className="import-strip" onClick={() => fileRef.current?.click()} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter') fileRef.current?.click() }}>
-            <div className="import-icon"><FileSpreadsheet size={17} /></div><div className="import-copy"><strong>{uploadMessage || 'Your data, your dashboard'}</strong><span>{uploadMessage ? 'Your CSV stays in this browser session.' : 'Drop a CSV anywhere or click to upload. Your data never leaves your device.'}</span></div><button className="text-button" onClick={(event) => { event.stopPropagation(); fileRef.current?.click() }}>Choose file <ArrowUpRight size={14} /></button>
+            <div className="import-icon"><FileSpreadsheet size={17} /></div><div className="import-copy"><strong>{uploadMessage || 'Your data, your dashboard'}</strong><span>{uploadMessage ? 'Your CSV stays on this device. Remove it using the file control above.' : 'Drop a CSV anywhere or click to upload. Your data never leaves your device.'}</span></div><button className="text-button" onClick={(event) => { event.stopPropagation(); fileRef.current?.click() }}>Choose file <ArrowUpRight size={14} /></button>
           </div>
           {uploadMessage && uploadMessage.includes('Please') || uploadMessage.startsWith('No sessions') || uploadMessage.startsWith('We couldn’t') ? <div className="upload-error"><X size={14} />{uploadMessage}</div> : null}
 
-          {activePage === 'dev' ? <DevPage sessions={sessions} /> : activePage === 'overview' ? <>
+          {storageMessage && <div className="storage-message" role="alert">{storageMessage}</div>}
+          {(allocation.estimatedCount > 0 || allocation.unknownCount > 0) && <div className="style-estimate-note" role="status">{allocation.estimatedCount > 0 ? `${allocation.estimatedCount} unclassified sessions distributed proportionally using the known Gi / No-Gi split (${Math.round((allocation.giShare ?? 0) * 100)}% / ${Math.round((1 - (allocation.giShare ?? 0)) * 100)}%). Estimated styles are included throughout the dashboard.` : `${allocation.unknownCount} sessions remain unclassified: no known Gi or No-Gi records are available to calculate a ratio.`}</div>}
+          {activePage === 'instructions' ? <InstructionsPage /> : activePage === 'dev' ? <DevPage sessions={sessions} /> : activePage === 'overview' ? <>
             <div className="section-toolbar"><div className="section-title"><span className="live-dot" /> AT A GLANCE</div><div className="toolbar-controls"><span className="updated-label">Based on {filteredSessions.length} sessions</span><label className="select-wrap"><CalendarDays size={14} /><select value={period} onChange={(event) => setPeriod(event.target.value)}><option>All time</option><option>12 months</option><option>90 days</option><option>30 days</option><option>This year</option></select><ChevronDown size={13} /></label></div></div>
 
             <div className="stats-grid">
@@ -271,27 +335,28 @@ function App() {
               <article className="stat-card"><div className="stat-top"><span>Favorite style</span><span className="stat-icon blue"><Users size={16} /></span></div><div className="stat-value stat-word">{metrics.mostFrequent}</div><div className="stat-foot"><span>{metrics.gi} Gi · {metrics.noGi} No-Gi</span><span>sessions</span></div></article>
             </div>
 
-            <TrainingCalendar sessions={sessions} year={selectedYear} years={availableYears} onYearChange={setAnnualYear} styleFilter={styleFilter} query={query} />
+            <ChartFrame title="Training calendar"><TrainingCalendar sessions={sessions} year={selectedYear} years={availableYears} onYearChange={setAnnualYear} styleFilter={styleFilter} query={query} /></ChartFrame>
 
             <div className="charts-grid">
-              <section className="panel activity-panel"><div className="panel-heading"><div><h2>Training activity</h2><p>Yearly attendance · busiest month: {busiestMonth.sessions ? busiestMonth.month : '—'}</p><p className="chart-explanation">Green bars count sessions; purple bars show mat hours. Months without sessions remain visible as zero.</p></div><label className="year-select"><span>YEAR</span><select value={selectedYear} onChange={(event) => setAnnualYear(Number(event.target.value))}>{availableYears.map((year) => <option key={year} value={year}>{year}</option>)}</select><ChevronDown size={12} /></label></div><div className="chart-legend"><span><i className="legend-swatch lime" />Sessions</span><span><i className="legend-swatch lavender" />Hours on mat</span></div><div className="activity-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={annualData} margin={{ top: 7, right: 12, left: -18, bottom: 0 }} barGap={3}><CartesianGrid vertical={false} stroke="#eeeee9" strokeDasharray="4 5" /><XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fill: '#96978e', fontSize: 10 }} dy={10} /><YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: '#96978e', fontSize: 10 }} /><Tooltip cursor={{ fill: '#f6f7f1' }} contentStyle={{ border: '1px solid #e9eae4', borderRadius: 10, fontSize: 12, boxShadow: '0 8px 25px #25291b12' }} /><Bar dataKey="sessions" name="Sessions" fill="#c7ec69" radius={[5, 5, 0, 0]} maxBarSize={19} /><Bar dataKey="hours" name="Hours on mat" fill="#c9baf6" radius={[5, 5, 0, 0]} maxBarSize={19} /></BarChart></ResponsiveContainer></div><div className="chart-bottom"><span><span className="bottom-dot" /> {annualData.reduce((sum, item) => sum + item.sessions, 0)} sessions in {selectedYear}</span><span>{selectedYear} <CalendarDays size={13} /></span></div></section>
+              <ChartFrame title="Training activity"><section className="panel activity-panel"><div className="panel-heading"><div><h2>Training activity</h2><p>Yearly attendance · busiest month: {busiestMonth.sessions ? busiestMonth.month : '—'}</p><p className="chart-explanation">Green bars count sessions; purple bars show mat hours. Months without sessions remain visible as zero.</p></div><label className="year-select"><span>YEAR</span><select value={selectedYear} onChange={(event) => setAnnualYear(Number(event.target.value))}>{availableYears.map((year) => <option key={year} value={year}>{year}</option>)}</select><ChevronDown size={12} /></label></div><div className="chart-legend"><span><i className="legend-swatch lime" />Sessions</span><span><i className="legend-swatch lavender" />Hours on mat</span></div><div className="activity-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={annualData} margin={{ top: 7, right: 12, left: -18, bottom: 0 }} barGap={3}><CartesianGrid vertical={false} stroke="#eeeee9" strokeDasharray="4 5" /><XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fill: '#96978e', fontSize: 10 }} dy={10} /><YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: '#96978e', fontSize: 10 }} /><Tooltip cursor={{ fill: '#f6f7f1' }} contentStyle={{ border: '1px solid #e9eae4', borderRadius: 10, fontSize: 12, boxShadow: '0 8px 25px #25291b12' }} /><Bar dataKey="sessions" name="Sessions" fill="#c7ec69" radius={[5, 5, 0, 0]} maxBarSize={19} /><Bar dataKey="hours" name="Hours on mat" fill="#c9baf6" radius={[5, 5, 0, 0]} maxBarSize={19} /></BarChart></ResponsiveContainer></div><div className="chart-bottom"><span><span className="bottom-dot" /> {annualData.reduce((sum, item) => sum + item.sessions, 0)} sessions in {selectedYear}</span><span>{selectedYear} <CalendarDays size={13} /></span></div></section></ChartFrame>
 
-              <section className="panel style-panel"><div className="panel-heading"><div><h2>Gi vs. No-Gi</h2><p>Share of sessions by training uniform</p><p className="chart-explanation">Counts Gi, No-Gi, and any unclassified sessions.</p></div>
+              <ChartFrame title="Gi vs. No-Gi"><section className="panel style-panel"><div className="panel-heading"><div><h2>Gi vs. No-Gi</h2><p>Share of sessions by training uniform</p><p className="chart-explanation">Counts Gi, No-Gi, and any unclassified sessions.</p></div>
                 <button className="subtle-icon" aria-label="Style chart settings"><MoreHorizontal size={18} /></button>
-              </div><div className="donut-wrap"><div className="donut-chart"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={styleData} dataKey="value" nameKey="name" innerRadius="72%" outerRadius="94%" paddingAngle={4} stroke="none" cornerRadius={5}>{styleData.map((entry) => <Cell key={entry.name} fill={entry.name === 'Gi' ? COLORS[0] : entry.name === 'No-Gi' ? COLORS[1] : COLORS[2]} />)}</Pie><Tooltip contentStyle={{ border: '1px solid #e9eae4', borderRadius: 10, fontSize: 12 }} /></PieChart></ResponsiveContainer></div><div className="donut-center"><strong>{filteredSessions.length}</strong><span>sessions</span></div></div><div className="style-legend">{[{ name: 'Gi', value: metrics.gi, color: COLORS[0] }, { name: 'No-Gi', value: metrics.noGi, color: COLORS[1] }, ...(metrics.other ? [{ name: 'Other', value: metrics.other, color: COLORS[2] }] : [])].map((item) => <div className="style-row" key={item.name}><span className="style-name"><i style={{ background: item.color }} />{item.name}</span><strong>{item.value}<small> sessions</small></strong><span className="style-percent">{filteredSessions.length ? Math.round(item.value / filteredSessions.length * 100) : 0}%</span></div>)}</div><div className="style-note"><Sparkles size={14} /> Both styles build a well-rounded game.</div></section>
+              </div><div className="donut-wrap"><div className="donut-chart"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={styleData} dataKey="value" nameKey="name" innerRadius="72%" outerRadius="94%" paddingAngle={4} stroke="none" cornerRadius={5}>{styleData.map((entry) => <Cell key={entry.name} fill={entry.name === 'Gi' ? COLORS[0] : entry.name === 'No-Gi' ? COLORS[1] : COLORS[2]} />)}</Pie><Tooltip contentStyle={{ border: '1px solid #e9eae4', borderRadius: 10, fontSize: 12 }} /></PieChart></ResponsiveContainer></div><div className="donut-center"><strong>{filteredSessions.length}</strong><span>sessions</span></div></div><div className="style-legend">{[{ name: 'Gi', value: metrics.gi, color: COLORS[0] }, { name: 'No-Gi', value: metrics.noGi, color: COLORS[1] }, ...(metrics.other ? [{ name: 'Other', value: metrics.other, color: COLORS[2] }] : [])].map((item) => <div className="style-row" key={item.name}><span className="style-name"><i style={{ background: item.color }} />{item.name}</span><strong>{item.value}<small> sessions</small></strong><span className="style-percent">{filteredSessions.length ? Math.round(item.value / filteredSessions.length * 100) : 0}%</span></div>)}</div><div className="style-note"><Sparkles size={14} /> Both styles build a well-rounded game.</div></section></ChartFrame>
             </div>
 
             <div className="insights-grid">
-              <section className="panel insight-panel"><div className="panel-heading"><div><h2>Class types</h2><p>Sessions grouped by the first class-title segment</p><p className="chart-explanation">For example, “Fundamentals” and “Advanced”.</p></div><span className="chart-type-label">BY CLASS</span></div><div className="insight-chart type-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={typeData} layout="vertical" margin={{ top: 8, right: 17, left: 4, bottom: 0 }}><CartesianGrid horizontal={false} stroke="#eeeee9" strokeDasharray="4 5" /><XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: '#96978e', fontSize: 10 }} /><YAxis type="category" dataKey="name" width={82} tickLine={false} axisLine={false} tick={{ fill: '#77796f', fontSize: 10 }} /><Tooltip cursor={{ fill: '#f6f7f1' }} contentStyle={{ border: '1px solid #e9eae4', borderRadius: 10, fontSize: 12 }} /><Bar dataKey="sessions" name="Sessions" fill="#f4a68c" radius={[0, 5, 5, 0]} maxBarSize={17} /></BarChart></ResponsiveContainer></div></section>
-              <section className="panel insight-panel"><div className="panel-heading"><div><h2>Weekly rhythm</h2><p>Sessions counted by weekday</p><p className="chart-explanation">Uses each session’s calendar date, across the selected range.</p></div><span className="chart-type-label">BY DAY</span></div><div className="insight-chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={weekdayData} margin={{ top: 15, right: 9, left: -20, bottom: 0 }}><defs><linearGradient id="weekdayFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#c9baf6" stopOpacity={0.45} /><stop offset="95%" stopColor="#c9baf6" stopOpacity={0.02} /></linearGradient></defs><CartesianGrid vertical={false} stroke="#eeeee9" strokeDasharray="4 5" /><XAxis dataKey="day" tickLine={false} axisLine={false} tick={{ fill: '#96978e', fontSize: 10 }} dy={8} /><YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: '#96978e', fontSize: 10 }} /><Tooltip contentStyle={{ border: '1px solid #e9eae4', borderRadius: 10, fontSize: 12 }} /><Area type="monotone" dataKey="sessions" name="Sessions" stroke="#a38dd7" strokeWidth={2} fill="url(#weekdayFill)" activeDot={{ r: 4 }} /></AreaChart></ResponsiveContainer></div><div className="insight-foot"><CalendarDays size={13} /> Most popular: <strong>{weekdayData.reduce((best, day) => day.sessions > best.sessions ? day : best, weekdayData[0]).day}</strong></div></section>
-              <section className="panel insight-panel instructor-panel"><div className="panel-heading"><div><h2>Coaches & academy</h2><p>Session totals for each coach; venue below</p><p className="chart-explanation">Coach names are taken from the text after “|”.</p></div><span className="chart-type-label">COMMUNITY</span></div><div className="instructor-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={instructorData} layout="vertical" margin={{ top: 6, right: 16, left: 0, bottom: 0 }}><CartesianGrid horizontal={false} stroke="#eeeee9" strokeDasharray="4 5" /><XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: '#96978e', fontSize: 9 }} /><YAxis type="category" dataKey="name" width={92} tickLine={false} axisLine={false} tick={{ fill: '#77796f', fontSize: 9 }} /><Tooltip cursor={{ fill: '#f6f7f1' }} contentStyle={{ border: '1px solid #e9eae4', borderRadius: 10, fontSize: 12 }} /><Bar dataKey="sessions" name="Sessions" fill="#9fb9d1" radius={[0, 5, 5, 0]} maxBarSize={14} /></BarChart></ResponsiveContainer></div><div className="venue-summary"><span className="venue-icon"><MapPin size={14} /></span><span><small>TRAINING AT</small><strong>{[...new Set(filteredSessions.map((session) => session.venue))][0] ?? 'No venue yet'}</strong></span><span className="venue-count">{new Set(filteredSessions.map((session) => session.venue)).size} {new Set(filteredSessions.map((session) => session.venue)).size === 1 ? 'location' : 'locations'}</span></div></section>
+              <ChartFrame title="Class types"><section className="panel insight-panel"><div className="panel-heading"><div><h2>Class types</h2><p>Sessions grouped by the first class-title segment</p><p className="chart-explanation">For example, “Fundamentals” and “Advanced”.</p></div><span className="chart-type-label">BY CLASS</span></div><div className="insight-chart type-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={typeData} layout="vertical" margin={{ top: 8, right: 17, left: 4, bottom: 0 }}><CartesianGrid horizontal={false} stroke="#eeeee9" strokeDasharray="4 5" /><XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: '#96978e', fontSize: 10 }} /><YAxis type="category" dataKey="name" width={82} tickLine={false} axisLine={false} tick={{ fill: '#77796f', fontSize: 10 }} /><Tooltip cursor={{ fill: '#f6f7f1' }} contentStyle={{ border: '1px solid #e9eae4', borderRadius: 10, fontSize: 12 }} /><Bar dataKey="sessions" name="Sessions" fill="#f4a68c" radius={[0, 5, 5, 0]} maxBarSize={17} /></BarChart></ResponsiveContainer></div></section></ChartFrame>
+              <ChartFrame title="Weekly rhythm"><section className="panel insight-panel"><div className="panel-heading"><div><h2>Weekly rhythm</h2><p>Sessions counted by weekday</p><p className="chart-explanation">Uses each session’s calendar date, across the selected range.</p></div><span className="chart-type-label">BY DAY</span></div><div className="insight-chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={weekdayData} margin={{ top: 15, right: 9, left: -20, bottom: 0 }}><defs><linearGradient id="weekdayFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#c9baf6" stopOpacity={0.45} /><stop offset="95%" stopColor="#c9baf6" stopOpacity={0.02} /></linearGradient></defs><CartesianGrid vertical={false} stroke="#eeeee9" strokeDasharray="4 5" /><XAxis dataKey="day" tickLine={false} axisLine={false} tick={{ fill: '#96978e', fontSize: 10 }} dy={8} /><YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: '#96978e', fontSize: 10 }} /><Tooltip contentStyle={{ border: '1px solid #e9eae4', borderRadius: 10, fontSize: 12 }} /><Area type="monotone" dataKey="sessions" name="Sessions" stroke="#a38dd7" strokeWidth={2} fill="url(#weekdayFill)" activeDot={{ r: 4 }} /></AreaChart></ResponsiveContainer></div><div className="insight-foot"><CalendarDays size={13} /> Most popular: <strong>{weekdayData.reduce((best, day) => day.sessions > best.sessions ? day : best, weekdayData[0]).day}</strong></div></section></ChartFrame>
+              <ChartFrame title="Coaches & academy"><section className="panel insight-panel instructor-panel"><div className="panel-heading"><div><h2>Coaches & academy</h2><p>Session totals for each coach; venue below</p><p className="chart-explanation">Coach names are taken from the text after “|”.</p></div><span className="chart-type-label">COMMUNITY</span></div><div className="instructor-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={instructorData} layout="vertical" margin={{ top: 6, right: 16, left: 0, bottom: 0 }}><CartesianGrid horizontal={false} stroke="#eeeee9" strokeDasharray="4 5" /><XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: '#96978e', fontSize: 9 }} /><YAxis type="category" dataKey="name" width={92} tickLine={false} axisLine={false} tick={{ fill: '#77796f', fontSize: 9 }} /><Tooltip cursor={{ fill: '#f6f7f1' }} contentStyle={{ border: '1px solid #e9eae4', borderRadius: 10, fontSize: 12 }} /><Bar dataKey="sessions" name="Sessions" fill="#9fb9d1" radius={[0, 5, 5, 0]} maxBarSize={14} /></BarChart></ResponsiveContainer></div><div className="venue-summary"><span className="venue-icon"><MapPin size={14} /></span><span><small>TRAINING AT</small><strong>{[...new Set(filteredSessions.map((session) => session.venue))][0] ?? 'No venue yet'}</strong></span><span className="venue-count">{new Set(filteredSessions.map((session) => session.venue)).size} {new Set(filteredSessions.map((session) => session.venue)).size === 1 ? 'location' : 'locations'}</span></div></section></ChartFrame>
             </div>
 
-            <YearHistoryChart data={yearData} />
+            <TrainingTimeline sessions={sessions} styleFilter={styleFilter} query={query} />
+            <ChartFrame title="Year over year"><YearHistoryChart data={yearData} /></ChartFrame>
 
             <section className="panel sessions-panel">
-              <div className="panel-heading sessions-heading"><div><h2>Recent sessions</h2><p>A record of time well spent</p></div><button className="button button-ghost" onClick={() => setActivePage('sessions')}>View all <ArrowUpRight size={14} /></button></div><div className="table-tools"><label className="search-field"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sessions..." /></label><label className="filter-select"><Filter size={14} /><select value={styleFilter} onChange={(event) => setStyleFilter(event.target.value)}><option>All styles</option><option>Gi</option><option>NoGi</option></select><ChevronDown size={13} /></label></div><SessionTable sessions={filteredSessions.slice(0, 5)} /><div className="table-footer"><span>Showing {Math.min(filteredSessions.length, 5)} of {filteredSessions.length} sessions</span><button onClick={() => setActivePage('sessions')}>See all sessions <ArrowUpRight size={13} /></button></div></section>
-          </> : <section className="panel all-sessions-panel"><div className="panel-heading sessions-heading"><div><h2>All sessions</h2><p>Your training history, all in one place</p></div><div className="session-total"><strong>{filteredSessions.length}</strong> sessions</div></div><div className="table-tools"><label className="search-field"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sessions or instructors..." /></label><label className="filter-select"><Filter size={14} /><select value={styleFilter} onChange={(event) => setStyleFilter(event.target.value)}><option>All styles</option><option>Gi</option><option>NoGi</option></select><ChevronDown size={13} /></label></div><SessionTable sessions={filteredSessions} /></section>}
+              <div className="panel-heading sessions-heading"><div><h2>Recent sessions</h2><p>A record of time well spent</p></div><button className="button button-ghost" onClick={() => goToPage('sessions')}>View all <ArrowUpRight size={14} /></button></div><div className="table-tools"><label className="search-field"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sessions..." /></label><label className="filter-select"><Filter size={14} /><select value={styleFilter} onChange={(event) => setStyleFilter(event.target.value)}><option>All styles</option><option>Gi</option><option>NoGi</option></select><ChevronDown size={13} /></label></div><SessionTable sessions={filteredSessions.slice(0, 5)} /><div className="table-footer"><span>Showing {Math.min(filteredSessions.length, 5)} of {filteredSessions.length} sessions</span><button onClick={() => goToPage('sessions')}>See all sessions <ArrowUpRight size={13} /></button></div></section>
+          </> : <SessionBrowser key={csvImport?.fileName ?? 'sample'} sessions={sessions} initialQuery={query} initialStyle={styleFilter} renderTable={rows => <SessionTable sessions={rows} />} />}
         </div>
       </main>
     </div>
@@ -300,7 +365,7 @@ function App() {
 
 function SessionTable({ sessions }: { sessions: Session[] }) {
   if (!sessions.length) return <div className="empty-table"><Search size={20} /><strong>No sessions match those filters</strong><span>Try a different search or import a CSV with training data.</span></div>
-  return <div className="table-scroll"><table><thead><tr><th>CLASS</th><th>INSTRUCTOR</th><th>DATE</th><th>DURATION</th><th>STYLE</th><th aria-label="Actions" /></tr></thead><tbody>{sessions.map((session) => <tr key={session.id}><td><div className="class-cell"><div className={`class-avatar ${session.style === 'Gi' ? 'gi-avatar' : session.style === 'NoGi' ? 'nogi-avatar' : ''}`}>{session.style === 'Gi' ? 'G' : session.style === 'NoGi' ? 'N' : 'T'}</div><div><strong>{session.classType}</strong><span>{session.venue}</span></div></div></td><td className="instructor-cell">{session.instructor}</td><td><span className="date-main">{shortDate(session.date)}, {session.date.getFullYear()}</span><span className="date-time">{new Intl.DateTimeFormat('en', { hour: 'numeric', minute: '2-digit' }).format(session.date)}</span></td><td><span className="duration-pill"><Clock3 size={12} />{formatDuration(session.duration)}</span></td><td><span className={`style-badge ${session.style.toLowerCase()}`}>{session.style === 'NoGi' ? 'No-Gi' : session.style}</span></td><td><button className="subtle-icon row-action" aria-label="Session details"><MoreHorizontal size={17} /></button></td></tr>)}</tbody></table></div>
+  return <div className="table-scroll"><table><thead><tr><th>CLASS</th><th>INSTRUCTOR</th><th>DATE</th><th>DURATION</th><th>STYLE</th><th aria-label="Actions" /></tr></thead><tbody>{sessions.map((session) => <tr key={session.id}><td><div className="class-cell"><div className={`class-avatar ${session.style === 'Gi' ? 'gi-avatar' : session.style === 'NoGi' ? 'nogi-avatar' : ''}`}>{session.style === 'Gi' ? 'G' : session.style === 'NoGi' ? 'N' : 'T'}</div><div><strong>{session.classType}</strong><span>{session.venue}</span></div></div></td><td className="instructor-cell">{session.instructor}</td><td><span className="date-main">{shortDate(session.date)}, {session.date.getFullYear()}</span><span className="date-time">{new Intl.DateTimeFormat('en', { hour: 'numeric', minute: '2-digit' }).format(session.date)}</span></td><td><span className="duration-pill"><Clock3 size={12} />{formatDuration(session.duration)}</span></td><td><span className={`style-badge ${session.style.toLowerCase()}`} title={session.styleEstimated ? 'Estimated from the known Gi / No-Gi ratio' : undefined}>{session.style === 'NoGi' ? 'No-Gi' : session.style}{session.styleEstimated && ' (est.)'}</span></td><td><button className="subtle-icon row-action" aria-label="Session details"><MoreHorizontal size={17} /></button></td></tr>)}</tbody></table></div>
 }
 
 function YearHistoryChart({ data }: { data: { year: string; sessions: number; hours: number }[] }) {
