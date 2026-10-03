@@ -1,5 +1,9 @@
 import ChartFrame from './components/ChartFrame'
 import SessionSpiral from './SessionSpiral'
+import RankTimeline from './components/RankTimeline'
+import type { RankPromotion } from './lib/rankHistory'
+import { bjjRankHistory, describeRank, promotionsOnDate, rankAtDate } from './lib/rankHistory'
+import { RankBadge, RankColorControls, RankColorLegend } from './components/RankContext'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
@@ -40,10 +44,13 @@ function label(text: string, color = '#8594a9', width = 1.5) {
   return sprite
 }
 
-export default function DevPage({ sessions }: { sessions: Session[] }) {
+export default function DevPage({ sessions, ranks = [] }: { sessions: Session[]; ranks?: RankPromotion[] }) {
+  const history = useMemo(() => bjjRankHistory(ranks), [ranks])
+  const [colorByBelt, setColorByBelt] = useState(true)
+  const beltMode = colorByBelt && history.length > 0
   const mountRef = useRef<HTMLDivElement>(null)
   const resetRef = useRef<(() => void) | null>(null)
-  const years = useMemo(() => [...new Set(sessions.map(s => s.date.getFullYear()))].sort((a, b) => b - a), [sessions])
+  const years = useMemo(() => [...new Set([...sessions.map(s => s.date.getFullYear()), ...history.map(rank => rank.date.getFullYear())])].sort((a, b) => b - a), [sessions, history])
   const [yearChoice, setYearChoice] = useState<number | null>(null)
   const year = yearChoice !== null && years.includes(yearChoice) ? yearChoice : years[0]
   const [style, setStyle] = useState('All styles')
@@ -148,7 +155,16 @@ export default function DevPage({ sessions }: { sessions: Session[] }) {
       const styleMinutes = new Map<Session['style'], number>()
       day.sessions.forEach(session => styleMinutes.set(session.style, (styleMinutes.get(session.style) ?? 0) + session.duration))
       const dominant = [...styleMinutes].sort((a, b) => b[1] - a[1])[0]?.[0]
-      mesh.setColorAt(index, new THREE.Color(dominant ? COLORS[dominant] : '#263246'))
+      const rank = rankAtDate(day.date, history)
+      mesh.setColorAt(index, new THREE.Color(dominant ? (beltMode ? (rank ? describeRank(rank).color : '#8190a7') : COLORS[dominant]) : '#263246'))
+      promotionsOnDate(day.date, history).forEach(promotion => {
+        const marker = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.035, 0.64), new THREE.MeshBasicMaterial({ color: describeRank(promotion).color, wireframe: true }))
+        marker.position.set(day.week * gap, height - 0.06, day.weekday * gap)
+        scene.add(marker)
+        const tag = label(promotion.rank, '#ffffff', 0.85)
+        tag.position.set(day.week * gap, height + 0.25, day.weekday * gap)
+        scene.add(tag)
+      })
     })
     scene.add(mesh)
     WEEKDAYS.forEach((name, i) => {
@@ -233,18 +249,19 @@ export default function DevPage({ sessions }: { sessions: Session[] }) {
       renderer.dispose()
       host.replaceChildren()
     }
-  }, [days, flat])
+  }, [days, flat, history, beltMode])
 
   return <div className="calendar-lab">
     <div className="calendar-intro"><div><span className="calendar-kicker">A YEAR ON THE MAT</span><h2>Your training, in rhythm.</h2><p>One tile for every day. Every session leaves its mark.</p></div><span className="calendar-year-stamp">{year ?? '—'}</span></div>
     <div className="calendar-metrics"><div><span>SESSIONS</span><strong>{visible.length}</strong></div><div><span>MAT TIME</span><strong>{hours(minutes)}</strong></div><div><span>ACTIVE DAYS</span><strong>{activeDays}</strong></div><div><span>BIGGEST DAY</span><strong>{busiest ? hours(busiest.minutes) : '—'}</strong><small>{busiest ? dateLabel(busiest.date) : 'No sessions yet'}</small></div></div>
     <ChartFrame title="Training atlas"><section className="calendar-explorer">
-      <div className="calendar-controls"><span className="calendar-scene-title"><CalendarDays size={15} /> TRAINING ATLAS</span><div className="calendar-control-group"><select aria-label="Training year" value={year ?? ''} onChange={e => { setYearChoice(Number(e.target.value)); setSelectedKey(null); setHover(null) }}>{years.length ? years.map(y => <option key={y}>{y}</option>) : <option value="">No data</option>}</select><div className="calendar-segments" role="group" aria-label="Training style">{['All styles', 'Gi', 'NoGi', 'Other'].map(s => <button key={s} className={style === s ? 'active' : ''} onClick={() => { setStyle(s); setSelectedKey(null); setHover(null) }}>{s === 'NoGi' ? 'No-Gi' : s}</button>)}</div><button className="calendar-view" onClick={() => { setFlat(!flat); setHover(null) }}>{flat ? '3D view' : 'Top view'}</button><button className="calendar-view" aria-label="Reset camera" onClick={() => resetRef.current?.()}><RotateCcw size={14} /></button></div></div>
-      <div className="calendar-stage"><div ref={mountRef} className="three-canvas" aria-label="Interactive training calendar. Columns are weeks, rows are Monday through Sunday. Colored tiles mark training days and taller tiles show more mat time." /><div className="calendar-stage-note"><span>ONE YEAR. YOUR STORY.</span><small>Weeks → &nbsp; / &nbsp; weekdays ↓</small></div>{hover && <div className="calendar-tooltip" style={{ left: hover.x, top: hover.y }}><strong>{new Intl.DateTimeFormat('en', { weekday: 'short', month: 'short', day: 'numeric' }).format(hover.day.date)}</strong><span>{hover.day.sessions.length ? `${hover.day.sessions.length} sessions · ${hover.day.minutes} min` : 'No training logged'}</span><small>Click to explore this day <ArrowUpRight size={11} /></small></div>}{(webglError || !days.length) && <div className="calendar-empty"><CalendarDays size={30} /><strong>{webglError ? '3D graphics are unavailable' : 'Your calendar starts here'}</strong><span>{webglError ? 'Try a browser with WebGL enabled.' : 'Import your training CSV to fill your atlas.'}</span></div>}<div className="calendar-gestures">{flat ? 'DRAG TO PAN' : 'DRAG TO ORBIT'} <span>·</span> SCROLL TO ZOOM <span>·</span> CLICK A DAY</div></div>
-      <div className="calendar-legend"><div>{Object.entries(COLORS).map(([name, color]) => <span key={name}><i style={{ background: color }} />{name === 'NoGi' ? 'No-Gi' : name}</span>)}<span><i style={{ background: '#263246' }} />No training</span></div><span>Height = mat time · Color = style with most minutes that day</span></div>
+      <div className="calendar-controls"><span className="calendar-scene-title"><CalendarDays size={15} /> TRAINING ATLAS</span><div className="calendar-control-group">{history.length > 0 && <RankColorControls belt={beltMode} onChange={setColorByBelt} />}<select aria-label="Training year" value={year ?? ''} onChange={e => { setYearChoice(Number(e.target.value)); setSelectedKey(null); setHover(null) }}>{years.length ? years.map(y => <option key={y}>{y}</option>) : <option value="">No data</option>}</select><div className="calendar-segments" role="group" aria-label="Training style">{['All styles', 'Gi', 'NoGi', 'Other'].map(s => <button key={s} className={style === s ? 'active' : ''} onClick={() => { setStyle(s); setSelectedKey(null); setHover(null) }}>{s === 'NoGi' ? 'No-Gi' : s}</button>)}</div><button className="calendar-view" onClick={() => { setFlat(!flat); setHover(null) }}>{flat ? '3D view' : 'Top view'}</button><button className="calendar-view" aria-label="Reset camera" onClick={() => resetRef.current?.()}><RotateCcw size={14} /></button></div></div>
+      <div className="calendar-stage"><div ref={mountRef} className="three-canvas" aria-label="Interactive training calendar. Columns are weeks, rows are Monday through Sunday. Colored tiles mark training days and taller tiles show more mat time." /><div className="calendar-stage-note"><span>ONE YEAR. YOUR STORY.</span><small>Weeks → &nbsp; / &nbsp; weekdays ↓</small></div>{hover && <div className="calendar-tooltip" style={{ left: hover.x, top: hover.y }}><strong>{new Intl.DateTimeFormat('en', { weekday: 'short', month: 'short', day: 'numeric' }).format(hover.day.date)}</strong><span>{hover.day.sessions.length ? `${hover.day.sessions.length} sessions · ${hover.day.minutes} min` : 'No training logged'}</span>{history.length > 0 && <RankBadge rank={rankAtDate(hover.day.date, history)} />}{promotionsOnDate(hover.day.date, history).map(rank => <RankBadge key={rank.id} rank={rank} promotion />)}<small>Click to explore this day <ArrowUpRight size={11} /></small></div>}{(webglError || !days.length) && <div className="calendar-empty"><CalendarDays size={30} /><strong>{webglError ? '3D graphics are unavailable' : 'Your calendar starts here'}</strong><span>{webglError ? 'Try a browser with WebGL enabled.' : 'Import your training CSV to fill your atlas.'}</span></div>}<div className="calendar-gestures">{flat ? 'DRAG TO PAN' : 'DRAG TO ORBIT'} <span>·</span> SCROLL TO ZOOM <span>·</span> CLICK A DAY</div></div>
+      <div className="calendar-legend"><div>{beltMode ? <RankColorLegend history={history} /> : Object.entries(COLORS).map(([name, color]) => <span key={name}><i style={{ background: color }} />{name === 'NoGi' ? 'No-Gi' : name}</span>)}<span><i style={{ background: '#263246' }} />No training</span></div><span>Height = mat time · Color = {beltMode ? 'recorded belt' : 'dominant training style'}</span></div>
     </section></ChartFrame>
-    <section className="calendar-detail"><div className="calendar-detail-title"><div><span className="calendar-kicker">DAY EXPLORER</span><h3>{selected ? new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).format(selected.date) : 'Every tile has a story.'}</h3></div>{selected && <button aria-label="Close day details" onClick={() => setSelectedKey(null)}><X size={16} /></button>}</div>{selected ? <><p>{selected.sessions.length} sessions · {selected.minutes} minutes on the mat</p>{selected.sessions.length ? <div className="calendar-session-list">{[...selected.sessions].sort((a, b) => a.date.getTime() - b.date.getTime()).map(s => <article key={s.id}><i style={{ background: COLORS[s.style] }} /><div><strong>{s.classType} <span>{s.style === 'NoGi' ? 'No-Gi' : s.style}</span></strong><small>{s.instructor} · {s.venue}</small></div><time>{new Intl.DateTimeFormat('en', { hour: 'numeric', minute: '2-digit' }).format(s.date)}</time><b>{s.duration} min</b></article>)}</div> : <p className="calendar-detail-hint">No sessions logged on this day.</p>}</> : <p className="calendar-detail-hint">Select a day in the atlas to see its classes, coaches, and mat time.</p>}</section>
-    <SessionSpiral sessions={sessions} />
+    {history.length > 0 && <p className="rank-chart-note">Outlined tiles with rank codes mark promotion days, even when no session was logged.</p>}<section className="calendar-detail"><div className="calendar-detail-title"><div><span className="calendar-kicker">DAY EXPLORER</span><h3>{selected ? new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).format(selected.date) : 'Every tile has a story.'}</h3></div>{selected && <button aria-label="Close day details" onClick={() => setSelectedKey(null)}><X size={16} /></button>}</div>{selected ? <>{history.length > 0 && <div className="rank-day-context"><RankBadge rank={rankAtDate(selected.date, history)} />{promotionsOnDate(selected.date, history).map(rank => <RankBadge key={rank.id} rank={rank} promotion />)}</div>}<p>{selected.sessions.length} sessions · {selected.minutes} minutes on the mat</p>{selected.sessions.length ? <div className="calendar-session-list">{[...selected.sessions].sort((a, b) => a.date.getTime() - b.date.getTime()).map(s => <article key={s.id}><i style={{ background: COLORS[s.style] }} /><div><strong>{s.classType} <span>{s.style === 'NoGi' ? 'No-Gi' : s.style}</span></strong><small>{s.instructor} · {s.venue}</small></div><time>{new Intl.DateTimeFormat('en', { hour: 'numeric', minute: '2-digit' }).format(s.date)}</time><b>{s.duration} min</b></article>)}</div> : <p className="calendar-detail-hint">No sessions logged on this day.</p>}</> : <p className="calendar-detail-hint">Select a day in the atlas to see its classes, coaches, and mat time.</p>}</section>
+    <SessionSpiral sessions={sessions} ranks={ranks} />
+    <RankTimeline ranks={ranks} />
   </div>
 }
 

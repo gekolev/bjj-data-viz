@@ -46,3 +46,16 @@ test('reports unavailable storage and quota failures without throwing', () => {
   assert.equal(saveCsvImport(data, blocked), false)
   assert.equal(removeCsvImport(blocked), false)
 })
+
+test('persists rank history and restores promotion dates, including rank-only imports', () => {
+  const store = storage()
+  const ranks = [{ id: 1, rank: 'B-2', date: new Date(2026, 8, 28), stripes: 2, discipline: 'BJJ', status: 'Promoted', details: '{}' }]
+  for (const sessions of [data.sessions, []]) {
+    const imported = { ...data, sessions, ranks }
+    assert.equal(saveCsvImport(imported, store), true)
+    assert.deepEqual(loadCsvImport(store), imported)
+    assert.ok(loadCsvImport(store).ranks[0].date instanceof Date)
+  }
+  saveCsvImport({ ...data, ranks: [{ ...ranks[0], date: 'invalid' }] }, store)
+  assert.equal(loadCsvImport(store), null)
+})

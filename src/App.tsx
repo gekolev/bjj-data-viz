@@ -21,6 +21,9 @@ import { allocateTrainingStyles } from './lib/allocateTrainingStyles'
 import InstructionsPage from './InstructionsPage'
 import { loadCsvImport, saveCsvImport, removeCsvImport, type CsvImport } from './lib/importStorage'
 import SessionBrowser from './components/SessionBrowser'
+import { ranksFromCsvRows, normalizeRankHistory, type RankPromotion } from './lib/rankHistory'
+import RankTimeline from './components/RankTimeline'
+import { PromotionSummary } from './components/RankContext'
 
 type Session = {
   id: number
@@ -69,7 +72,7 @@ function parseSession(training: string, dateText: string, id: number, durationTe
   return { id, training: classType, date, duration, style, classType, venue, instructor }
 }
 
-function sessionsFromCsv(file: File, onDone: (sessions: Session[], error?: string) => void) {
+function sessionsFromCsv(file: File, onDone: (sessions: Session[], error?: string, ranks?: RankPromotion[], skippedRanks?: number) => void) {
   Papa.parse<Record<string, string>>(file, {
     header: true,
     skipEmptyLines: 'greedy',
@@ -83,14 +86,17 @@ function sessionsFromCsv(file: File, onDone: (sessions: Session[], error?: strin
       const trainingKey = keyFor(['training', 'class', 'activity', 'session']) ?? headers[0]
       const dateKey = keyFor(['date / time', 'datetime', 'date', 'time'])
       const durationKey = keyFor(['duration', 'length'])
+      const recordTypeKey = keyFor(['record type'])
       const parsed = data.flatMap((row, index) => {
+        if (String(row[recordTypeKey ?? ''] ?? '').trim().toLowerCase() === 'rank') return []
         const training = String(row[trainingKey ?? ''] ?? '').trim()
         const dateText = String(row[dateKey ?? ''] ?? '')
         if (!training || !dateText) return []
         const session = parseSession(training, dateText, index, String(row[durationKey ?? ''] ?? ''))
         return session ? [session] : []
       })
-      onDone(parsed, parsed.length ? undefined : 'No sessions found. Include Training and Date / Time columns in your CSV.')
+      const { ranks, skipped } = ranksFromCsvRows(data)
+      onDone(parsed, parsed.length || ranks.length ? undefined : 'No sessions found. Include Training and Date / Time columns, or dated rank records, in your CSV.', ranks, skipped)
     },
     error: () => onDone([], 'We couldn’t read that CSV. Check the file and try again.'),
   })
@@ -139,6 +145,7 @@ function App() {
   const [csvImport, setCsvImport] = useState<CsvImport | null>(() => loadCsvImport())
   const [savedLocally, setSavedLocally] = useState(true)
   const [storageMessage, setStorageMessage] = useState('')
+  const rankHistory = useMemo(() => normalizeRankHistory(csvImport?.ranks ?? []), [csvImport])
   const sourceSessions = csvImport?.sessions ?? initialSessions
   const allocation = useMemo(() => allocateTrainingStyles(sourceSessions), [sourceSessions])
   const sessions = allocation.sessions
@@ -165,7 +172,7 @@ function App() {
   }, [])
 
   const newest = sessions.reduce((latest, row) => row.date > latest ? row.date : latest, new Date(0))
-  const availableYears = [...new Set(sessions.map((session) => session.date.getFullYear()))].sort((a, b) => a - b)
+  const availableYears = [...new Set([...sessions.map((session) => session.date.getFullYear()), ...rankHistory.map(rank => rank.date.getFullYear())])].sort((a, b) => a - b)
   const selectedYear = availableYears.includes(annualYear) ? annualYear : availableYears.at(-1) ?? annualYear
   const filteredSessions = useMemo(() => {
     const cutoff = period === 'All time' ? null : new Date(newest)
@@ -245,18 +252,18 @@ function App() {
     }
     const request = ++importRequest.current
     setUploadMessage(`Reading ${file.name}...`)
-    sessionsFromCsv(file, (rows, error) => {
+    sessionsFromCsv(file, (rows, error, ranks = [], skippedRanks = 0) => {
       if (request !== importRequest.current) return
       if (error) setUploadMessage(error)
       else {
-        const nextImport = { fileName: file.name, sessions: rows }
+        const nextImport = { fileName: file.name, sessions: rows, ranks }
         const saved = saveCsvImport(nextImport)
         const cleared = saved || removeCsvImport()
         setCsvImport(nextImport)
         setSavedLocally(saved)
         setStorageMessage(saved ? '' : cleared ? 'Browser storage is unavailable or full. This CSV is loaded for this session only; refresh will clear it.' : 'This CSV could not be saved, and the previous saved CSV could not be cleared. Refresh may restore the previous file. Clear this site’s browser data to remove it.')
         if (rows.length) setAnnualYear(Math.max(...rows.map((row) => row.date.getFullYear())))
-        setUploadMessage(`${rows.length} sessions imported from ${file.name}`)
+        setUploadMessage(`${rows.length} sessions and ${ranks.length} rank records imported from ${file.name}${skippedRanks ? ` (${skippedRanks} rank records skipped: missing rank or invalid date)` : ''}`)
       }
     })
   }
@@ -325,7 +332,7 @@ function App() {
 
           {storageMessage && <div className="storage-message" role="alert">{storageMessage}</div>}
           {(allocation.estimatedCount > 0 || allocation.unknownCount > 0) && <div className="style-estimate-note" role="status">{allocation.estimatedCount > 0 ? `${allocation.estimatedCount} unclassified sessions distributed proportionally using the known Gi / No-Gi split (${Math.round((allocation.giShare ?? 0) * 100)}% / ${Math.round((1 - (allocation.giShare ?? 0)) * 100)}%). Estimated styles are included throughout the dashboard.` : `${allocation.unknownCount} sessions remain unclassified: no known Gi or No-Gi records are available to calculate a ratio.`}</div>}
-          {activePage === 'instructions' ? <InstructionsPage /> : activePage === 'dev' ? <DevPage sessions={sessions} /> : activePage === 'overview' ? <>
+          {activePage === 'instructions' ? <InstructionsPage /> : activePage === 'dev' ? <DevPage sessions={sessions} ranks={rankHistory} /> : activePage === 'overview' ? <>
             <div className="section-toolbar"><div className="section-title"><span className="live-dot" /> AT A GLANCE</div><div className="toolbar-controls"><span className="updated-label">Based on {filteredSessions.length} sessions</span><label className="select-wrap"><CalendarDays size={14} /><select value={period} onChange={(event) => setPeriod(event.target.value)}><option>All time</option><option>12 months</option><option>90 days</option><option>30 days</option><option>This year</option></select><ChevronDown size={13} /></label></div></div>
 
             <div className="stats-grid">
@@ -335,10 +342,10 @@ function App() {
               <article className="stat-card"><div className="stat-top"><span>Favorite style</span><span className="stat-icon blue"><Users size={16} /></span></div><div className="stat-value stat-word">{metrics.mostFrequent}</div><div className="stat-foot"><span>{metrics.gi} Gi · {metrics.noGi} No-Gi</span><span>sessions</span></div></article>
             </div>
 
-            <ChartFrame title="Training calendar"><TrainingCalendar sessions={sessions} year={selectedYear} years={availableYears} onYearChange={setAnnualYear} styleFilter={styleFilter} query={query} /></ChartFrame>
+            <ChartFrame title="Training calendar"><TrainingCalendar ranks={rankHistory} sessions={sessions} year={selectedYear} years={availableYears} onYearChange={setAnnualYear} styleFilter={styleFilter} query={query} /></ChartFrame>
 
             <div className="charts-grid">
-              <ChartFrame title="Training activity"><section className="panel activity-panel"><div className="panel-heading"><div><h2>Training activity</h2><p>Yearly attendance · busiest month: {busiestMonth.sessions ? busiestMonth.month : '—'}</p><p className="chart-explanation">Green bars count sessions; purple bars show mat hours. Months without sessions remain visible as zero.</p></div><label className="year-select"><span>YEAR</span><select value={selectedYear} onChange={(event) => setAnnualYear(Number(event.target.value))}>{availableYears.map((year) => <option key={year} value={year}>{year}</option>)}</select><ChevronDown size={12} /></label></div><div className="chart-legend"><span><i className="legend-swatch lime" />Sessions</span><span><i className="legend-swatch lavender" />Hours on mat</span></div><div className="activity-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={annualData} margin={{ top: 7, right: 12, left: -18, bottom: 0 }} barGap={3}><CartesianGrid vertical={false} stroke="#eeeee9" strokeDasharray="4 5" /><XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fill: '#96978e', fontSize: 10 }} dy={10} /><YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: '#96978e', fontSize: 10 }} /><Tooltip cursor={{ fill: '#f6f7f1' }} contentStyle={{ border: '1px solid #e9eae4', borderRadius: 10, fontSize: 12, boxShadow: '0 8px 25px #25291b12' }} /><Bar dataKey="sessions" name="Sessions" fill="#c7ec69" radius={[5, 5, 0, 0]} maxBarSize={19} /><Bar dataKey="hours" name="Hours on mat" fill="#c9baf6" radius={[5, 5, 0, 0]} maxBarSize={19} /></BarChart></ResponsiveContainer></div><div className="chart-bottom"><span><span className="bottom-dot" /> {annualData.reduce((sum, item) => sum + item.sessions, 0)} sessions in {selectedYear}</span><span>{selectedYear} <CalendarDays size={13} /></span></div></section></ChartFrame>
+              <ChartFrame title="Training activity"><section className="panel activity-panel"><div className="panel-heading"><div><h2>Training activity</h2><p>Yearly attendance · busiest month: {busiestMonth.sessions ? busiestMonth.month : '—'}</p><p className="chart-explanation">Green bars count sessions; purple bars show mat hours. Months without sessions remain visible as zero.</p></div><label className="year-select"><span>YEAR</span><select value={selectedYear} onChange={(event) => setAnnualYear(Number(event.target.value))}>{availableYears.map((year) => <option key={year} value={year}>{year}</option>)}</select><ChevronDown size={12} /></label></div><div className="chart-legend"><span><i className="legend-swatch lime" />Sessions</span><span><i className="legend-swatch lavender" />Hours on mat</span></div><div className="activity-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={annualData} margin={{ top: 7, right: 12, left: -18, bottom: 0 }} barGap={3}><CartesianGrid vertical={false} stroke="#eeeee9" strokeDasharray="4 5" /><XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fill: '#96978e', fontSize: 10 }} dy={10} /><YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: '#96978e', fontSize: 10 }} /><Tooltip cursor={{ fill: '#f6f7f1' }} contentStyle={{ border: '1px solid #e9eae4', borderRadius: 10, fontSize: 12, boxShadow: '0 8px 25px #25291b12' }} /><Bar dataKey="sessions" name="Sessions" fill="#c7ec69" radius={[5, 5, 0, 0]} maxBarSize={19} /><Bar dataKey="hours" name="Hours on mat" fill="#c9baf6" radius={[5, 5, 0, 0]} maxBarSize={19} /></BarChart></ResponsiveContainer></div><div className="chart-bottom"><span><span className="bottom-dot" /> {annualData.reduce((sum, item) => sum + item.sessions, 0)} sessions in {selectedYear}</span><span>{selectedYear} <CalendarDays size={13} /></span></div><PromotionSummary ranks={rankHistory} year={selectedYear} /></section></ChartFrame>
 
               <ChartFrame title="Gi vs. No-Gi"><section className="panel style-panel"><div className="panel-heading"><div><h2>Gi vs. No-Gi</h2><p>Share of sessions by training uniform</p><p className="chart-explanation">Counts Gi, No-Gi, and any unclassified sessions.</p></div>
                 <button className="subtle-icon" aria-label="Style chart settings"><MoreHorizontal size={18} /></button>
@@ -351,7 +358,8 @@ function App() {
               <ChartFrame title="Coaches & academy"><section className="panel insight-panel instructor-panel"><div className="panel-heading"><div><h2>Coaches & academy</h2><p>Session totals for each coach; venue below</p><p className="chart-explanation">Coach names are taken from the text after “|”.</p></div><span className="chart-type-label">COMMUNITY</span></div><div className="instructor-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={instructorData} layout="vertical" margin={{ top: 6, right: 16, left: 0, bottom: 0 }}><CartesianGrid horizontal={false} stroke="#eeeee9" strokeDasharray="4 5" /><XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: '#96978e', fontSize: 9 }} /><YAxis type="category" dataKey="name" width={92} tickLine={false} axisLine={false} tick={{ fill: '#77796f', fontSize: 9 }} /><Tooltip cursor={{ fill: '#f6f7f1' }} contentStyle={{ border: '1px solid #e9eae4', borderRadius: 10, fontSize: 12 }} /><Bar dataKey="sessions" name="Sessions" fill="#9fb9d1" radius={[0, 5, 5, 0]} maxBarSize={14} /></BarChart></ResponsiveContainer></div><div className="venue-summary"><span className="venue-icon"><MapPin size={14} /></span><span><small>TRAINING AT</small><strong>{[...new Set(filteredSessions.map((session) => session.venue))][0] ?? 'No venue yet'}</strong></span><span className="venue-count">{new Set(filteredSessions.map((session) => session.venue)).size} {new Set(filteredSessions.map((session) => session.venue)).size === 1 ? 'location' : 'locations'}</span></div></section></ChartFrame>
             </div>
 
-            <TrainingTimeline sessions={sessions} styleFilter={styleFilter} query={query} />
+            <TrainingTimeline ranks={rankHistory} sessions={sessions} styleFilter={styleFilter} query={query} />
+            <RankTimeline ranks={rankHistory} />
             <ChartFrame title="Year over year"><YearHistoryChart data={yearData} /></ChartFrame>
 
             <section className="panel sessions-panel">

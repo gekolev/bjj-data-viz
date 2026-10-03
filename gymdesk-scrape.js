@@ -100,23 +100,82 @@
         ).values()
     ];
 
+    // Rank history uses its own page and must never count as attendance.
+    const rankRows = [];
+    const seenRankPages = new Set();
+    let rankPage = 1;
+    while (true) {
+        const url = new URL("/members/ranks", window.location.origin);
+        if (rankPage > 1) url.searchParams.set("page", String(rankPage));
+        try {
+            console.log(`Fetching ranks page ${rankPage}...`);
+            const response = await fetch(url.href, { credentials: "include" });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const doc = new DOMParser().parseFromString(await response.text(), "text/html");
+            const records = [...doc.querySelectorAll("table")].flatMap(table => {
+                const headers = [...table.querySelectorAll("thead th")].map(th => th.textContent.trim());
+                const headerIndex = pattern => headers.findIndex(header => pattern.test(header));
+                return [...table.querySelectorAll("tbody tr")].flatMap(tr => {
+                    const cells = [...tr.querySelectorAll("td")].map(td => {
+                        const text = td.textContent.trim().replace(/\s+/g, " ");
+                        const rankLabel = [td, ...td.querySelectorAll("[title], [aria-label], img[alt]")]
+                            .flatMap(element => [element.getAttribute("title"), element.getAttribute("aria-label"), element.getAttribute("alt")])
+                            .find(value => value && /\b(?:W|B|P|BR|BK|BL|BLACK|BROWN)-\d+\b/i.test(value));
+                        return rankLabel && !text.includes(rankLabel) ? `${text} ${rankLabel}`.trim() : text;
+                    });
+                    const rankIndex = headerIndex(/^(?:current\s+)?rank$|belt/i);
+                    const dateIndex = headerIndex(/date|promoted on|awarded on/i);
+                    const rawRank = cells[rankIndex] || cells.find(cell => /\b(?:W|B|P|BR|BK|BL|BLACK|BROWN)-\d+\b/i.test(cell)) || "";
+                    const date = cells[dateIndex] || cells.find(cell => /\b\d{1,2}\/\d{1,2}\/\d{4}\b|\b\d{4}-\d{2}-\d{2}\b|\b[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}\b/.test(cell)) || "";
+                    const rank = rawRank.match(/\b(?:W|B|P|BR|BK|BL|BLACK|BROWN)-\d+\b/i)?.[0].toUpperCase() || rawRank;
+                    if (!rank || !date) return [];
+                    const stripeIndex = headerIndex(/stripe/i);
+                    const stripeMatch = rank.match(/\b(?:W|B|P|BR|BK|BL|BLACK|BROWN)-(\d+)\b/i) || rank.match(/(\d+)\s*stripes?/i);
+                    const disciplineIndex = headerIndex(/discipline|program|martial art|style/i);
+                    const rawDiscipline = cells[disciplineIndex] || cells.find(cell => /^(?:BJJ|Brazilian Jiu[- ]?Jitsu|Jiu[- ]?Jitsu|Judo|Karate|Taekwondo)$/i.test(cell)) || "";
+                    const statusIndex = headerIndex(/status|action|type/i);
+                    const rawStatus = cells[statusIndex] || cells.find(cell => /^(?:promoted|demoted|assigned|awarded)$/i.test(cell)) || "";
+                    const discipline = /\bBJJ\b/i.test(cells.join(" ")) ? "BJJ" : rawDiscipline;
+                    const status = rawStatus || cells.join(" ").match(/\b(?:Promoted|Demoted|Assigned|Awarded)\b/i)?.[0] || "";
+                    const promotionDate = date.match(/\b\d{1,2}\/\d{1,2}\/\d{4}\b|\b\d{4}-\d{2}-\d{2}\b/)?.[0] || date;
+                    return [{ rank, date: promotionDate, stripes: cells[stripeIndex] || stripeMatch?.[1] || "", discipline, status, details: JSON.stringify({ headers, cells }) }];
+                });
+            });
+            if (!records.length) {
+                if (rankPage === 1) console.log("No dated rank records found. Attendance will still be exported. Check the ranks table if you expected belt or stripe history.");
+                break;
+            }
+            const signature = JSON.stringify(records);
+            if (seenRankPages.has(signature)) break;
+            seenRankPages.add(signature);
+            rankRows.push(...records);
+            rankPage++;
+        } catch (error) {
+            console.log(`Ranks request failed on page ${rankPage}. Exporting the records fetched so far.`, error);
+            break;
+        }
+    }
+    const uniqueRanks = [...new Map(rankRows.map(row => [JSON.stringify([row.discipline, row.rank, row.date, row.stripes]), row])).values()];
+
     function escapeCSV(value) {
         return `"${String(value ?? "").replace(/"/g, '""')}"`;
     }
 
     const csv = [
-        ["Training", "Date / Time / Duration"]
+        ["Training", "Date / Time / Duration", "Record Type", "Rank", "Promotion Date", "Stripes", "Discipline", "Rank Status", "Rank Details"]
             .map(escapeCSV)
             .join(","),
 
         ...uniqueRows.map(row =>
             [
                 row.training,
-                row.details
+                row.details,
+                "attendance", "", "", "", "", "", ""
             ]
                 .map(escapeCSV)
                 .join(",")
-        )
+        ),
+        ...uniqueRanks.map(row => ["", "", "rank", row.rank, row.date, row.stripes, row.discipline, row.status, row.details].map(escapeCSV).join(","))
     ].join("\n");
 
     const blob = new Blob(
@@ -143,6 +202,6 @@
     URL.revokeObjectURL(downloadUrl);
 
     console.log(
-        `Finished: ${uniqueRows.length} unique attendance records exported from ${page - 1} pages.`
+        `Finished: ${uniqueRows.length} unique attendance records and ${uniqueRanks.length} rank records exported.`
     );
 })();

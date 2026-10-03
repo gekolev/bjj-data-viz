@@ -4,13 +4,18 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { RotateCcw } from 'lucide-react'
 import ChartFrame from './components/ChartFrame'
 import type { Session } from './DevPage'
+import { bjjRankHistory, describeRank, rankAtDate, type RankPromotion } from './lib/rankHistory'
+import { RankBadge, RankColorControls, RankColorLegend } from './components/RankContext'
 
 const COLORS = { Gi: '#cbf36b', NoGi: '#b7a0ff', Other: '#ffa987' }
 const dateLabel = (date: Date) => new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
 // Equal month sectors align seasons across years, including leap years.
 const dateAngle = (date: Date) => -Math.PI / 2 + (date.getMonth() + (date.getDate() - 1 + 0.5) / new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()) / 12 * Math.PI * 2
 
-export default function SessionSpiral({ sessions }: { sessions: Session[] }) {
+export default function SessionSpiral({ sessions, ranks = [] }: { sessions: Session[]; ranks?: RankPromotion[] }) {
+  const history = useMemo(() => bjjRankHistory(ranks), [ranks])
+  const [colorByBelt, setColorByBelt] = useState(true)
+  const beltMode = colorByBelt && history.length > 0
   const ordered = useMemo(() => [...sessions].sort((a, b) => a.date.getTime() - b.date.getTime() || a.id - b.id), [sessions])
   const mount = useRef<HTMLDivElement>(null)
   const reset = useRef<(() => void) | null>(null)
@@ -113,12 +118,14 @@ export default function SessionSpiral({ sessions }: { sessions: Session[] }) {
       dummy.position.set(point.x, height, point.z)
       dummy.updateMatrix()
       beads.setMatrixAt(index, dummy.matrix)
-      beads.setColorAt(index, new THREE.Color(COLORS[session.style]))
+      const rank = rankAtDate(session.date, history)
+      const color = beltMode ? (rank ? describeRank(rank).color : '#8190a7') : COLORS[session.style]
+      beads.setColorAt(index, new THREE.Color(color))
       dummy.position.y = height / 2
       dummy.scale.set(1, height, 1)
       dummy.updateMatrix()
       stems.setMatrixAt(index, dummy.matrix)
-      stems.setColorAt(index, new THREE.Color(COLORS[session.style]))
+      stems.setColorAt(index, new THREE.Color(color))
       dummy.scale.set(1, 1, 1)
     })
     scene.add(beads, stems)
@@ -195,13 +202,13 @@ export default function SessionSpiral({ sessions }: { sessions: Session[] }) {
       })
       beads.dispose(); stems.dispose(); renderer.dispose(); host.replaceChildren()
     }
-  }, [ordered, topView])
+  }, [ordered, topView, history, beltMode])
 
   return <ChartFrame title="Seasonal training wheel"><section className="session-spiral calendar-explorer">
     <div className="spiral-heading"><span className="calendar-kicker">CONSISTENCY THROUGH THE SEASONS</span><h3>Compare your training, year by year.</h3><p>One ring per year, oldest inside. Compare the same month across rings to spot busy periods and breaks. Every dot is one session.</p></div>
-    <div className="calendar-controls"><span className="calendar-scene-title">{ordered.length.toLocaleString()} SESSION POINTS</span><div className="calendar-control-group"><button className="calendar-view" onClick={() => { setTopView(v => !v); setHovered(null) }}>{topView ? '3D duration view' : 'Top view'}</button><button className="calendar-view" aria-label="Reset training wheel camera" onClick={() => reset.current?.()}><RotateCcw size={14} /></button></div></div>
-    <div className="spiral-stage">{detail && <div className="wheel-tooltip"><strong>{detail.training}</strong><span>{dateLabel(detail.date)}</span><span>{detail.duration} min · {detail.style === 'NoGi' ? 'No-Gi' : detail.style}</span></div>}<div ref={mount} className="three-canvas" role="img" aria-label={`Calendar wheel of all ${ordered.length} training sessions. Each ring represents a year and angle represents calendar date. In 3D view height represents duration; color represents style. Use the session selector below for individual details.`} /><div className="calendar-stage-note"><span>ONE RING PER YEAR</span><small>January to December, clockwise</small></div>{(error || !ordered.length) && <div className="calendar-empty"><strong>{error ? '3D graphics are unavailable' : 'Your journey starts here'}</strong><span>{error ? 'Enable WebGL to explore the wheel. Session details remain available below.' : 'Import a training CSV to see every session.'}</span></div>}<div className="calendar-gestures">DRAG TO {topView ? 'PAN' : 'ORBIT'} · SCROLL TO ZOOM · CLICK A DOT</div></div>
-    <div className="calendar-legend"><div>{Object.entries(COLORS).map(([style, color]) => <span key={style}><i style={{ background: color }} />{style === 'NoGi' ? 'No-Gi' : style}</span>)}</div><span>{topView ? 'Position = calendar date · Switch to 3D to compare duration' : 'Height = duration · Position = calendar date'}</span></div>
-    <div className="spiral-details"><label>Explore a session<select aria-label="Explore a calendar wheel session" value={selected ?? ''} onChange={e => setSelected(e.target.value === '' ? null : Number(e.target.value))}><option value="">Hover or click a dot, or select a session</option>{ordered.map((s, index) => <option key={`${s.id}-${index}`} value={index}>{index + 1}. {dateLabel(s.date)} · {s.training}</option>)}</select></label><div className="spiral-readout" aria-live="polite">{detail ? <><strong>{detail.training}</strong><span>{dateLabel(detail.date)} · {detail.duration} min · {detail.style === 'NoGi' ? 'No-Gi' : detail.style}</span><small>{[detail.instructor, detail.venue].filter(Boolean).join(' · ')}</small></> : <><strong>{ordered.length ? `${dateLabel(ordered[0].date)} — ${dateLabel(ordered.at(-1)!.date)}` : 'No sessions yet'}</strong><span>Zoom in to inspect the dots. Click to keep a session’s details here.</span></>}</div></div>
+    <div className="calendar-controls"><span className="calendar-scene-title">{ordered.length.toLocaleString()} SESSION POINTS</span><div className="calendar-control-group">{history.length > 0 && <RankColorControls belt={beltMode} onChange={setColorByBelt} />}<button className="calendar-view" onClick={() => { setTopView(v => !v); setHovered(null) }}>{topView ? '3D duration view' : 'Top view'}</button><button className="calendar-view" aria-label="Reset training wheel camera" onClick={() => reset.current?.()}><RotateCcw size={14} /></button></div></div>
+    <div className="spiral-stage">{detail && <div className="wheel-tooltip"><strong>{detail.training}</strong><span>{dateLabel(detail.date)}</span><span>{detail.duration} min · {detail.style === 'NoGi' ? 'No-Gi' : detail.style}</span>{history.length > 0 && <RankBadge rank={rankAtDate(detail.date, history)} />}</div>}<div ref={mount} className="three-canvas" role="img" aria-label={`Calendar wheel of all ${ordered.length} training sessions. Each ring represents a year and angle represents calendar date. In 3D view height represents duration; color represents ${beltMode ? 'the recorded belt' : 'training style'}. Use the session selector below for individual details.`} /><div className="calendar-stage-note"><span>ONE RING PER YEAR</span><small>January to December, clockwise</small></div>{(error || !ordered.length) && <div className="calendar-empty"><strong>{error ? '3D graphics are unavailable' : 'Your journey starts here'}</strong><span>{error ? 'Enable WebGL to explore the wheel. Session details remain available below.' : 'Import a training CSV to see every session.'}</span></div>}<div className="calendar-gestures">DRAG TO {topView ? 'PAN' : 'ORBIT'} · SCROLL TO ZOOM · CLICK A DOT</div></div>
+    <div className="calendar-legend"><div>{beltMode ? <RankColorLegend history={history} /> : Object.entries(COLORS).map(([style, color]) => <span key={style}><i style={{ background: color }} />{style === 'NoGi' ? 'No-Gi' : style}</span>)}</div><span>{topView ? 'Position = calendar date · Switch to 3D to compare duration' : 'Height = duration · Position = calendar date'}</span></div>
+    <div className="spiral-details"><label>Explore a session<select aria-label="Explore a calendar wheel session" value={selected ?? ''} onChange={e => setSelected(e.target.value === '' ? null : Number(e.target.value))}><option value="">Hover or click a dot, or select a session</option>{ordered.map((s, index) => <option key={`${s.id}-${index}`} value={index}>{index + 1}. {dateLabel(s.date)} · {s.training}</option>)}</select></label><div className="spiral-readout" aria-live="polite">{detail ? <><strong>{detail.training}</strong><span>{dateLabel(detail.date)} · {detail.duration} min · {detail.style === 'NoGi' ? 'No-Gi' : detail.style}</span><small>{[detail.instructor, detail.venue].filter(Boolean).join(' · ')}</small>{history.length > 0 && <RankBadge rank={rankAtDate(detail.date, history)} />}</> : <><strong>{ordered.length ? `${dateLabel(ordered[0].date)} — ${dateLabel(ordered.at(-1)!.date)}` : 'No sessions yet'}</strong><span>Zoom in to inspect the dots. Click to keep a session’s details here.</span></>}</div></div>
   </section></ChartFrame>
 }
