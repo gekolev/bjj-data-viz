@@ -15,7 +15,7 @@ export function RankColorControls({ belt, onChange }: { belt: boolean; onChange:
 
 export function RankColorLegend({ history }: { history: RankPromotion[] }) {
   const belts = new Map(history.map(rank => { const item = describeRank(rank); return [item.color, item.label.split(' · ')[0]] }))
-  return <div className="rank-color-legend">{[...belts].map(([color, name]) => <span key={color}><i style={{ background: color }} />{name}</span>)}<span><i style={{ background: '#8190a7' }} />Rank not recorded</span><small>Stripes appear in session details.</small></div>
+  return <div className="rank-color-legend">{[...belts].map(([color, name]) => <span key={color}><i style={{ background: color }} />{name}</span>)}<span><i style={{ background: '#a1a1aa' }} />Rank not recorded</span><small>Stripes appear in session details.</small></div>
 }
 
 export function PromotionSummary({ ranks, year }: { ranks: RankPromotion[]; year: number }) {

@@ -1,6 +1,5 @@
 import ChartFrame from './components/ChartFrame'
 import SessionSpiral from './SessionSpiral'
-import RankTimeline from './components/RankTimeline'
 import type { RankPromotion } from './lib/rankHistory'
 import { bjjRankHistory, describeRank, promotionsOnDate, rankAtDate } from './lib/rankHistory'
 import { RankBadge, RankColorControls, RankColorLegend } from './components/RankContext'
@@ -21,13 +20,13 @@ export type Session = {
   instructor: string
 }
 type Day = { date: Date; sessions: Session[]; minutes: number; week: number; weekday: number }
-const COLORS = { Gi: '#cbf36b', NoGi: '#b7a0ff', Other: '#ffa987' }
+const COLORS = { Gi: '#dc2626', NoGi: '#d4d4d8', Other: '#fbbf24' }
 const WEEKDAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
 const dayKey = (date: Date) => `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
 const dateLabel = (date: Date) => new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(date)
 const hours = (minutes: number) => `${Number((minutes / 60).toFixed(1))}h`
 
-function label(text: string, color = '#8594a9', width = 1.5) {
+function label(text: string, color = '#979797', width = 1.5) {
   const canvas = document.createElement('canvas')
   canvas.width = 512
   canvas.height = 96
@@ -96,7 +95,7 @@ export default function DevPage({ sessions, ranks = [] }: { sessions: Session[];
     renderer.toneMappingExposure = 1.25
     host.replaceChildren(renderer.domElement)
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color('#0b101b')
+    scene.background = new THREE.Color('#131313')
     const gap = 0.68
     const weekCount = days.at(-1)!.week + 1
     const width = weekCount * gap
@@ -139,11 +138,11 @@ export default function DevPage({ sessions, ranks = [] }: { sessions: Session[];
     rim.position.set(center, 6, -12)
     scene.add(rim)
 
-    const platform = new THREE.Mesh(new RoundedBoxGeometry(width + 4, 0.22, 8.4, 2, 0.1), new THREE.MeshStandardMaterial({ color: '#141d2c', roughness: 0.8, metalness: 0.25 }))
+    const platform = new THREE.Mesh(new RoundedBoxGeometry(width + 4, 0.22, 8.4, 2, 0.1), new THREE.MeshStandardMaterial({ color: '#202020', roughness: 0.8, metalness: 0.25 }))
     platform.position.set(center, -0.25, 2)
     scene.add(platform)
     const geometry = new RoundedBoxGeometry(0.55, 1, 0.55, 2, 0.045)
-    const material = new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.12, emissive: '#394155', emissiveIntensity: 0.22 })
+    const material = new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.12, emissive: '#474747', emissiveIntensity: 0.22 })
     const mesh = new THREE.InstancedMesh(geometry, material, days.length)
     const dummy = new THREE.Object3D()
     days.forEach((day, index) => {
@@ -156,7 +155,7 @@ export default function DevPage({ sessions, ranks = [] }: { sessions: Session[];
       day.sessions.forEach(session => styleMinutes.set(session.style, (styleMinutes.get(session.style) ?? 0) + session.duration))
       const dominant = [...styleMinutes].sort((a, b) => b[1] - a[1])[0]?.[0]
       const rank = rankAtDate(day.date, history)
-      mesh.setColorAt(index, new THREE.Color(dominant ? (beltMode ? (rank ? describeRank(rank).color : '#8190a7') : COLORS[dominant]) : '#263246'))
+      mesh.setColorAt(index, new THREE.Color(dominant ? (beltMode ? (rank ? describeRank(rank).color : '#a1a1aa') : COLORS[dominant]) : '#363636'))
       promotionsOnDate(day.date, history).forEach(promotion => {
         const marker = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.035, 0.64), new THREE.MeshBasicMaterial({ color: describeRank(promotion).color, wireframe: true }))
         marker.position.set(day.week * gap, height - 0.06, day.weekday * gap)
@@ -168,12 +167,12 @@ export default function DevPage({ sessions, ranks = [] }: { sessions: Session[];
     })
     scene.add(mesh)
     WEEKDAYS.forEach((name, i) => {
-      const sprite = label(name, '#92a2b9', 1.2)
+      const sprite = label(name, '#a6a6a6', 1.2)
       sprite.position.set(-1.35, 0, i * gap)
       scene.add(sprite)
     })
     days.filter(day => day.date.getDate() === 1).forEach(day => {
-      const sprite = label(new Intl.DateTimeFormat('en', { month: 'short' }).format(day.date).toUpperCase(), '#c8d3e4', 1.3)
+      const sprite = label(new Intl.DateTimeFormat('en', { month: 'short' }).format(day.date).toUpperCase(), '#d6d6d6', 1.3)
       sprite.position.set(day.week * gap + 0.7, 0, -0.85)
       scene.add(sprite)
     })
@@ -257,11 +256,10 @@ export default function DevPage({ sessions, ranks = [] }: { sessions: Session[];
     <ChartFrame title="Training atlas"><section className="calendar-explorer">
       <div className="calendar-controls"><span className="calendar-scene-title"><CalendarDays size={15} /> TRAINING ATLAS</span><div className="calendar-control-group">{history.length > 0 && <RankColorControls belt={beltMode} onChange={setColorByBelt} />}<select aria-label="Training year" value={year ?? ''} onChange={e => { setYearChoice(Number(e.target.value)); setSelectedKey(null); setHover(null) }}>{years.length ? years.map(y => <option key={y}>{y}</option>) : <option value="">No data</option>}</select><div className="calendar-segments" role="group" aria-label="Training style">{['All styles', 'Gi', 'NoGi', 'Other'].map(s => <button key={s} className={style === s ? 'active' : ''} onClick={() => { setStyle(s); setSelectedKey(null); setHover(null) }}>{s === 'NoGi' ? 'No-Gi' : s}</button>)}</div><button className="calendar-view" onClick={() => { setFlat(!flat); setHover(null) }}>{flat ? '3D view' : 'Top view'}</button><button className="calendar-view" aria-label="Reset camera" onClick={() => resetRef.current?.()}><RotateCcw size={14} /></button></div></div>
       <div className="calendar-stage"><div ref={mountRef} className="three-canvas" aria-label="Interactive training calendar. Columns are weeks, rows are Monday through Sunday. Colored tiles mark training days and taller tiles show more mat time." /><div className="calendar-stage-note"><span>ONE YEAR. YOUR STORY.</span><small>Weeks → &nbsp; / &nbsp; weekdays ↓</small></div>{hover && <div className="calendar-tooltip" style={{ left: hover.x, top: hover.y }}><strong>{new Intl.DateTimeFormat('en', { weekday: 'short', month: 'short', day: 'numeric' }).format(hover.day.date)}</strong><span>{hover.day.sessions.length ? `${hover.day.sessions.length} sessions · ${hover.day.minutes} min` : 'No training logged'}</span>{history.length > 0 && <RankBadge rank={rankAtDate(hover.day.date, history)} />}{promotionsOnDate(hover.day.date, history).map(rank => <RankBadge key={rank.id} rank={rank} promotion />)}<small>Click to explore this day <ArrowUpRight size={11} /></small></div>}{(webglError || !days.length) && <div className="calendar-empty"><CalendarDays size={30} /><strong>{webglError ? '3D graphics are unavailable' : 'Your calendar starts here'}</strong><span>{webglError ? 'Try a browser with WebGL enabled.' : 'Import your training CSV to fill your atlas.'}</span></div>}<div className="calendar-gestures">{flat ? 'DRAG TO PAN' : 'DRAG TO ORBIT'} <span>·</span> SCROLL TO ZOOM <span>·</span> CLICK A DAY</div></div>
-      <div className="calendar-legend"><div>{beltMode ? <RankColorLegend history={history} /> : Object.entries(COLORS).map(([name, color]) => <span key={name}><i style={{ background: color }} />{name === 'NoGi' ? 'No-Gi' : name}</span>)}<span><i style={{ background: '#263246' }} />No training</span></div><span>Height = mat time · Color = {beltMode ? 'recorded belt' : 'dominant training style'}</span></div>
+      <div className="calendar-legend"><div>{beltMode ? <RankColorLegend history={history} /> : Object.entries(COLORS).map(([name, color]) => <span key={name}><i style={{ background: color }} />{name === 'NoGi' ? 'No-Gi' : name}</span>)}<span><i style={{ background: '#363636' }} />No training</span></div><span>Height = mat time · Color = {beltMode ? 'recorded belt' : 'dominant training style'}</span></div>
     </section></ChartFrame>
     {history.length > 0 && <p className="rank-chart-note">Outlined tiles with rank codes mark promotion days, even when no session was logged.</p>}<section className="calendar-detail"><div className="calendar-detail-title"><div><span className="calendar-kicker">DAY EXPLORER</span><h3>{selected ? new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).format(selected.date) : 'Every tile has a story.'}</h3></div>{selected && <button aria-label="Close day details" onClick={() => setSelectedKey(null)}><X size={16} /></button>}</div>{selected ? <>{history.length > 0 && <div className="rank-day-context"><RankBadge rank={rankAtDate(selected.date, history)} />{promotionsOnDate(selected.date, history).map(rank => <RankBadge key={rank.id} rank={rank} promotion />)}</div>}<p>{selected.sessions.length} sessions · {selected.minutes} minutes on the mat</p>{selected.sessions.length ? <div className="calendar-session-list">{[...selected.sessions].sort((a, b) => a.date.getTime() - b.date.getTime()).map(s => <article key={s.id}><i style={{ background: COLORS[s.style] }} /><div><strong>{s.classType} <span>{s.style === 'NoGi' ? 'No-Gi' : s.style}</span></strong><small>{s.instructor} · {s.venue}</small></div><time>{new Intl.DateTimeFormat('en', { hour: 'numeric', minute: '2-digit' }).format(s.date)}</time><b>{s.duration} min</b></article>)}</div> : <p className="calendar-detail-hint">No sessions logged on this day.</p>}</> : <p className="calendar-detail-hint">Select a day in the atlas to see its classes, coaches, and mat time.</p>}</section>
     <SessionSpiral sessions={sessions} ranks={ranks} />
-    <RankTimeline ranks={ranks} />
   </div>
 }
 

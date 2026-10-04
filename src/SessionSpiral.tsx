@@ -7,7 +7,7 @@ import type { Session } from './DevPage'
 import { bjjRankHistory, describeRank, rankAtDate, type RankPromotion } from './lib/rankHistory'
 import { RankBadge, RankColorControls, RankColorLegend } from './components/RankContext'
 
-const COLORS = { Gi: '#cbf36b', NoGi: '#b7a0ff', Other: '#ffa987' }
+const COLORS = { Gi: '#dc2626', NoGi: '#d4d4d8', Other: '#fbbf24' }
 const dateLabel = (date: Date) => new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
 // Equal month sectors align seasons across years, including leap years.
 const dateAngle = (date: Date) => -Math.PI / 2 + (date.getMonth() + (date.getDate() - 1 + 0.5) / new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()) / 12 * Math.PI * 2
@@ -40,7 +40,7 @@ export default function SessionSpiral({ sessions, ranks = [] }: { sessions: Sess
     renderer.outputColorSpace = THREE.SRGBColorSpace
     host.replaceChildren(renderer.domElement)
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color('#0b101b')
+    scene.background = new THREE.Color('#131313')
     const firstYear = ordered[0].date.getFullYear()
     const lastYear = ordered.at(-1)!.date.getFullYear()
     const years = Array.from({ length: lastYear - firstYear + 1 }, (_, i) => firstYear + i)
@@ -99,15 +99,15 @@ export default function SessionSpiral({ sessions, ranks = [] }: { sessions: Sess
     }
     years.forEach((year, index) => {
       const radius = yearRadius(year)
-      const band = new THREE.Mesh(new THREE.RingGeometry(radius - 0.35, radius + yearSpacing - 0.55, 180), new THREE.MeshBasicMaterial({ color: index % 2 ? '#182337' : '#121c2d', side: THREE.DoubleSide }))
+      const band = new THREE.Mesh(new THREE.RingGeometry(radius - 0.35, radius + yearSpacing - 0.55, 180), new THREE.MeshBasicMaterial({ color: index % 2 ? '#282828' : '#202020', side: THREE.DoubleSide }))
       band.rotation.x = -Math.PI / 2
       band.position.y = -0.03
       bands.push(band); scene.add(band)
-      addGuide(Array.from({ length: 361 }, (_, i) => new THREE.Vector3(Math.cos(i / 360 * Math.PI * 2) * radius, 0, Math.sin(i / 360 * Math.PI * 2) * radius)), '#63758f')
+      addGuide(Array.from({ length: 361 }, (_, i) => new THREE.Vector3(Math.cos(i / 360 * Math.PI * 2) * radius, 0, Math.sin(i / 360 * Math.PI * 2) * radius)), '#797979')
     })
     for (let month = 0; month < 12; month++) {
       const angle = -Math.PI / 2 + month / 12 * Math.PI * 2
-      addGuide([new THREE.Vector3(Math.cos(angle) * 11.5, 0, Math.sin(angle) * 11.5), new THREE.Vector3(Math.cos(angle) * (outerRadius - 1), 0, Math.sin(angle) * (outerRadius - 1))], month % 3 === 0 ? '#718098' : '#38465e')
+      addGuide([new THREE.Vector3(Math.cos(angle) * 11.5, 0, Math.sin(angle) * 11.5), new THREE.Vector3(Math.cos(angle) * (outerRadius - 1), 0, Math.sin(angle) * (outerRadius - 1))], month % 3 === 0 ? '#848484' : '#4b4b4b')
     }
     const beads = new THREE.InstancedMesh(new THREE.SphereGeometry(0.095, 12, 8), new THREE.MeshBasicMaterial(), ordered.length)
     const stems = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.015, 0.015, 1, 5), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.4 }), ordered.length)
@@ -119,7 +119,7 @@ export default function SessionSpiral({ sessions, ranks = [] }: { sessions: Sess
       dummy.updateMatrix()
       beads.setMatrixAt(index, dummy.matrix)
       const rank = rankAtDate(session.date, history)
-      const color = beltMode ? (rank ? describeRank(rank).color : '#8190a7') : COLORS[session.style]
+      const color = beltMode ? (rank ? describeRank(rank).color : '#a1a1aa') : COLORS[session.style]
       beads.setColorAt(index, new THREE.Color(color))
       dummy.position.y = height / 2
       dummy.scale.set(1, height, 1)
@@ -139,7 +139,7 @@ export default function SessionSpiral({ sessions, ranks = [] }: { sessions: Sess
       if (!context) return
       context.font = '700 48px sans-serif'
       context.textAlign = 'center'; context.textBaseline = 'middle'
-      context.fillStyle = '#f0f5ff'
+      context.fillStyle = '#f8f8f8'
       context.fillText(text, 128, 40)
       const texture = new THREE.CanvasTexture(canvas)
       texture.colorSpace = THREE.SRGBColorSpace
