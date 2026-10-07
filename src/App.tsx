@@ -16,13 +16,14 @@ import TrainingCalendar from './TrainingCalendar'
 import ChartFrame from './components/ChartFrame'
 import { ChartXAxis as XAxis, ChartYAxis as YAxis } from './components/ChartAxes'
 import TrainingTimeline from './components/TrainingTimeline'
+import TrainingJourney from './components/TrainingJourney'
 import { AnimatedArea as Area, AnimatedBar as Bar, AnimatedLine as Line, AnimatedPie as Pie } from './components/AnimatedChartSeries'
 import { allocateTrainingStyles } from './lib/allocateTrainingStyles'
+import { parseSession } from './lib/sessionParser'
 import InstructionsPage from './InstructionsPage'
 import { loadCsvImport, saveCsvImport, removeCsvImport, type CsvImport } from './lib/importStorage'
 import SessionBrowser from './components/SessionBrowser'
 import { ranksFromCsvRows, normalizeRankHistory, type RankPromotion } from './lib/rankHistory'
-import RankTimeline from './components/RankTimeline'
 import { PromotionSummary } from './components/RankContext'
 
 type Session = {
@@ -32,6 +33,8 @@ type Session = {
   duration: number
   style: 'Gi' | 'NoGi' | 'Other'
   styleEstimated?: boolean
+  durationEstimated?: boolean
+  timeRecorded?: boolean
   classType: string
   venue: string
   instructor: string
@@ -48,29 +51,6 @@ const initialSessions: Session[] = demoRows.map(([training, dateText], index) =>
   const parsed = parseSession(training, dateText, index)
   return parsed!
 })
-
-function parseDuration(value: string) {
-  const hours = value.match(/(\d+(?:\.\d+)?)\s*h(?:ours?)?/i)
-  const minutes = value.match(/(\d+)\s*m(?:in(?:utes?)?)?/i)
-  if (hours || minutes) return Number(hours?.[1] ?? 0) * 60 + Number(minutes?.[1] ?? 0)
-  const plainMinutes = value.match(/(\d+(?:\.\d+)?)\s*(?:min|minutes)/i)
-  return plainMinutes ? Number(plainMinutes[1]) : 60
-}
-
-function parseSession(training: string, dateText: string, id: number, durationText = ''): Session | null {
-  const dateMatch = dateText.match(/([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}\s+\d{1,2}:\d{2}\s*[AP]M)/i)
-  const date = new Date(dateMatch?.[1] ?? dateText)
-  if (Number.isNaN(date.getTime())) return null
-  const [details, instructorText = ''] = training.split('|')
-  const parts = details.replace(/\bno\s*-\s*gi\b/gi, 'NoGi').split('-').map((part) => part.trim()).filter(Boolean)
-  const classType = parts[0] ?? 'Training'
-  const styleText = parts.find((part) => /^(no\s*-?\s*gi|gi)$/i.test(part)) ?? ''
-  const style: Session['style'] = /nogi|no\s*-?\s*gi/i.test(styleText) ? 'NoGi' : /^gi$/i.test(styleText) ? 'Gi' : 'Other'
-  const venue = parts.slice(styleText ? parts.indexOf(styleText) + 1 : 1).join(' - ').trim() || 'Venue not listed'
-  const instructor = instructorText.trim().replace(/\s*\([^)]*\)/, '') || 'Instructor not listed'
-  const duration = parseDuration(durationText || dateText)
-  return { id, training: classType, date, duration, style, classType, venue, instructor }
-}
 
 function sessionsFromCsv(file: File, onDone: (sessions: Session[], error?: string, ranks?: RankPromotion[], skippedRanks?: number) => void) {
   Papa.parse<Record<string, string>>(file, {
@@ -310,7 +290,7 @@ function App() {
         <div className="workspace-label">WORKSPACE</div>
         <button className={`nav-item ${activePage === 'overview' ? 'active' : ''}`} onClick={() => goToPage('overview')}><Activity size={17} /> Overview</button>
         <button className={`nav-item ${activePage === 'sessions' ? 'active' : ''}`} onClick={() => goToPage('sessions')}><CalendarDays size={17} /> Sessions <span className="nav-count">{sessions.length}</span></button>
-        <button className={`nav-item ${activePage === 'dev' ? 'active' : ''}`} onClick={() => goToPage('dev')}><Box size={17} /> 3D Data Lab <span className="nav-badge">NEW</span></button>
+        <button className={`nav-item ${activePage === 'dev' ? 'active' : ''}`} onClick={() => goToPage('dev')}><Box size={17} /> 3D Data Lab</button>
         <div className="sidebar-divider" />
         <button className={`nav-item ${activePage === 'instructions' ? 'active' : ''}`} onClick={() => goToPage('instructions')}><BookOpen size={17} /> Get your CSV</button>
         <button className="nav-item quiet" onClick={downloadTemplate}><FileSpreadsheet size={17} /> CSV template</button>
@@ -359,7 +339,7 @@ function App() {
             </div>
 
             <TrainingTimeline ranks={rankHistory} sessions={sessions} styleFilter={styleFilter} query={query} />
-            <RankTimeline ranks={rankHistory} />
+            <TrainingJourney ranks={rankHistory} sessions={sessions} />
             <ChartFrame title="Year over year"><YearHistoryChart data={yearData} /></ChartFrame>
 
             <section className="panel sessions-panel">

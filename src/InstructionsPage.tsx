@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
-import { ArrowDownToLine, Check, Copy, FileCode2 } from 'lucide-react'
+import { ArrowDownToLine, ArrowRight, Check, Copy, FileCode2, LogIn, Terminal, Upload } from 'lucide-react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card'
 import instructions from '../docs/gymdesk-csv.md?raw'
 import script from '../gymdesk-scrape.js?raw'
 
@@ -30,7 +31,17 @@ export default function InstructionsPage() {
   }
 
   return <section className="instructions-page">
-    <article className="instructions-guide panel">{instructions.trim().split(/\r?\n\s*\r?\n/).map((block, index) => {
+    <section className="instructions-quickstart" aria-labelledby="quickstart-title">
+      <div className="instructions-quickstart-heading"><span className="instructions-eyebrow">GYMDESK → MAT METRICS</span><h2 id="quickstart-title">Your training journey, in 3 steps</h2><p>Export your attendance and belt history, then bring it into your dashboard.</p></div>
+      <ol className="instructions-steps">
+        <li><Card className="instructions-step"><CardHeader><span className="instructions-step-number">01</span><LogIn className="instructions-step-icon" size={24} aria-hidden="true" /></CardHeader><CardContent><CardTitle>Open your training history</CardTitle><CardDescription>Sign in to your gym’s Gymdesk website and open your attendance page. Select All trainings or All ranks if available.</CardDescription><div className="instructions-step-hint"><span>Gymdesk</span><ArrowRight size={14} aria-hidden="true" /><span>Attendance</span></div></CardContent></Card></li>
+        <li><Card className="instructions-step"><CardHeader><span className="instructions-step-number">02</span><Terminal className="instructions-step-icon" size={24} aria-hidden="true" /></CardHeader><CardContent><CardTitle>Run the export script</CardTitle><CardDescription>Open your browser’s Developer Tools and select Console. Paste the script, press Enter, and keep the tab open until your CSV downloads.</CardDescription><button className="button button-primary" onClick={copyScript}>{copyStatus.startsWith('Script copied') ? <Check size={15} /> : <Copy size={15} />} Copy script</button><span className="instructions-step-shortcut">Console: Ctrl + Shift + J · Mac: ⌘ + ⌥ + J</span></CardContent></Card></li>
+        <li><Card className="instructions-step"><CardHeader><span className="instructions-step-number">03</span><Upload className="instructions-step-icon" size={24} aria-hidden="true" /></CardHeader><CardContent><CardTitle>Import and explore</CardTitle><CardDescription>Return to Mat Metrics and click Import CSV, or drag your downloaded file onto the app. Your training charts and belt milestones will update.</CardDescription><div className="instructions-step-hint"><Check size={15} aria-hidden="true" /><span>Saved locally in your browser</span></div></CardContent></Card></li>
+      </ol>
+      <p className="instructions-quickstart-status" role="status">{copyStatus}</p>
+      <a className="instructions-details-link" href="#full-instructions">Full instructions & troubleshooting <ArrowDownToLine size={14} aria-hidden="true" /></a>
+    </section>
+    <article id="full-instructions" className="instructions-guide panel">{instructions.trim().split(/\r?\n\s*\r?\n/).map((block, index) => {
       if (block.startsWith('# ')) return <h2 key={index}>{inlineMarkdown(block.slice(2))}</h2>
       if (block.startsWith('## ')) return <h3 key={index}>{inlineMarkdown(block.slice(3))}</h3>
       return <p key={index}>{inlineMarkdown(block)}</p>

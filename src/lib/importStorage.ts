@@ -10,6 +10,8 @@ export type ImportedSession = {
   venue: string
   instructor: string
   styleEstimated?: boolean
+  durationEstimated?: boolean
+  timeRecorded?: boolean
 }
 export type CsvImport = { fileName: string; sessions: ImportedSession[]; ranks?: RankPromotion[] }
 type BrowserStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
