@@ -31,3 +31,9 @@ If you are developing a production application, we recommend enabling type-aware
 ```
 
 See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+
+### Manual training log
+
+Open **Log training** (or `/log`) to record training without Gymdesk. Choose a date, Gi or No-Gi, duration, and session type, then save. Gym, instructor, and notes are optional. Your last choices are reused. Sessions can be edited or deleted and are included in the dashboard alongside CSV imports. Sample data is hidden once you start a manual log, including after deleting its last entry. Manual sessions are stored separately in localStorage on the current browser and device; clearing site data removes them. Storage failures are reported before changes are applied.
+
+Manual entries also record start time, defaulting to the current device hour (:00). Date shortcuts, session type, focus, sparring rounds, effort, and recent gym/instructor buttons reduce typing. Optional detailed fields and the selected time persist across reloads and edits.

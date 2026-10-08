@@ -23,6 +23,8 @@ import { parseSession } from './lib/sessionParser'
 import InstructionsPage from './InstructionsPage'
 import { loadCsvImport, saveCsvImport, removeCsvImport, type CsvImport } from './lib/importStorage'
 import SessionBrowser from './components/SessionBrowser'
+import ManualLog from './components/ManualLog'
+import { loadManualSessions, saveManualSessions, type ManualSession } from './lib/manualStorage'
 import { ranksFromCsvRows, normalizeRankHistory, type RankPromotion } from './lib/rankHistory'
 import { PromotionSummary } from './components/RankContext'
 
@@ -90,9 +92,10 @@ const formatDuration = (minutes: number) => {
 
 const shortDate = (date: Date) => new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(date)
 const COLORS = ['#dc2626', '#52525b', '#d97706']
-type Page = 'overview' | 'sessions' | 'dev' | 'instructions'
+type Page = 'log' | 'overview' | 'sessions' | 'dev' | 'instructions'
 
 function pageFromPath(): Page {
+  if (window.location.pathname === '/log') return 'log'
   if (window.location.pathname === '/instructions') return 'instructions'
   if (window.location.pathname === '/dev') return 'dev'
   if (window.location.pathname === '/sessions') return 'sessions'
@@ -126,7 +129,20 @@ function App() {
   const [savedLocally, setSavedLocally] = useState(true)
   const [storageMessage, setStorageMessage] = useState('')
   const rankHistory = useMemo(() => normalizeRankHistory(csvImport?.ranks ?? []), [csvImport])
-  const sourceSessions = csvImport?.sessions ?? initialSessions
+  const [manualData, setManualData] = useState(() => loadManualSessions())
+  const [manualError, setManualError] = useState('')
+  const manualSessions = manualData.sessions
+  const updateManual = (next: ManualSession[]) => {
+    if (manualData.error) return false
+    if (!saveManualSessions(next)) { setManualError('Training could not be saved. Browser storage may be full or unavailable. Your changes have not been applied; please try again.'); return false }
+    setManualData({ sessions: next, error: '', initialized: true })
+    setManualError('')
+    return true
+  }
+  const sourceSessions = useMemo(() => {
+    const imported = csvImport?.sessions ?? (manualData.initialized ? [] : initialSessions)
+    return [...imported, ...manualSessions].map((row, id) => ({ ...row, id }))
+  }, [csvImport, manualSessions, manualData.initialized])
   const allocation = useMemo(() => allocateTrainingStyles(sourceSessions), [sourceSessions])
   const sessions = allocation.sessions
   const [activePage, setActivePage] = useState<Page>(pageFromPath)
@@ -151,7 +167,7 @@ function App() {
     return () => window.removeEventListener('popstate', syncRoute)
   }, [])
 
-  const newest = sessions.reduce((latest, row) => row.date > latest ? row.date : latest, new Date(0))
+  const newest = sessions.reduce((latest, row) => row.date > latest ? row.date : latest, sessions[0]?.date ?? new Date())
   const availableYears = [...new Set([...sessions.map((session) => session.date.getFullYear()), ...rankHistory.map(rank => rank.date.getFullYear())])].sort((a, b) => a - b)
   const selectedYear = availableYears.includes(annualYear) ? annualYear : availableYears.at(-1) ?? annualYear
   const filteredSessions = useMemo(() => {
@@ -261,7 +277,7 @@ function App() {
     setCsvImport(null)
     setSavedLocally(true)
     setStorageMessage('')
-    setUploadMessage('CSV removed from this browser. Showing sample data.')
+    setUploadMessage('CSV removed from this browser. ' + (manualData.initialized ? 'Your manual log is still available.' : 'Showing sample data.'))
     setQuery('')
     setStyleFilter('All styles')
     setPeriod('All time')
@@ -290,6 +306,7 @@ function App() {
         <div className="workspace-label">WORKSPACE</div>
         <button className={`nav-item ${activePage === 'overview' ? 'active' : ''}`} onClick={() => goToPage('overview')}><Activity size={17} /> Overview</button>
         <button className={`nav-item ${activePage === 'sessions' ? 'active' : ''}`} onClick={() => goToPage('sessions')}><CalendarDays size={17} /> Sessions <span className="nav-count">{sessions.length}</span></button>
+        <button title="Log training" aria-label="Log training" className={`nav-item ${activePage === 'log' ? 'active' : ''}`} onClick={() => goToPage('log')}><Dumbbell size={17} /> Log training</button>
         <button className={`nav-item ${activePage === 'dev' ? 'active' : ''}`} onClick={() => goToPage('dev')}><Box size={17} /> 3D Data Lab</button>
         <div className="sidebar-divider" />
         <button className={`nav-item ${activePage === 'instructions' ? 'active' : ''}`} onClick={() => goToPage('instructions')}><BookOpen size={17} /> Get your CSV</button>
@@ -301,9 +318,9 @@ function App() {
       </aside>
 
       <main className="main-area">
-        <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><strong>{activePage === 'overview' ? 'Overview' : activePage === 'sessions' ? 'Sessions' : activePage === 'instructions' ? 'Get your CSV' : '3D Data Lab'}</strong></div><div className="top-actions">{csvImport && <div className="current-csv" title={`${csvImport.fileName} — ${savedLocally ? 'Saved only in this browser' : 'Session only'}`}><FileSpreadsheet size={15} /><span className="current-csv-name">{csvImport.fileName}</span><button className="current-csv-remove" aria-label={`Remove ${csvImport.fileName} and delete its saved data`} title="Remove CSV and delete saved data" onClick={removeFile}><X size={14} /></button></div>}<button className="screen-toggle" aria-pressed={fillScreen} title="Expand the layout and scale the interface to fit your screen" onClick={() => setFillScreen((enabled) => !enabled)}><Maximize2 size={15} /><span>Fill screen</span><span className="screen-toggle-track" aria-hidden="true"><span /></span></button><span className="sync-status"><span className="status-dot" /> {csvImport ? savedLocally ? 'Saved in this browser' : 'Session only' : 'Sample data'}</span><button className="icon-button" aria-label="CSV export instructions" onClick={() => goToPage('instructions')}><CircleHelp size={17} /></button><div className="top-avatar">B</div></div></header>
+        <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><strong>{activePage === 'log' ? 'Log training' : activePage === 'overview' ? 'Overview' : activePage === 'sessions' ? 'Sessions' : activePage === 'instructions' ? 'Get your CSV' : '3D Data Lab'}</strong></div><div className="top-actions">{csvImport && <div className="current-csv" title={`${csvImport.fileName} — ${savedLocally ? 'Saved only in this browser' : 'Session only'}`}><FileSpreadsheet size={15} /><span className="current-csv-name">{csvImport.fileName}</span><button className="current-csv-remove" aria-label={`Remove ${csvImport.fileName} and delete its saved data`} title="Remove CSV and delete saved data" onClick={removeFile}><X size={14} /></button></div>}<button className="screen-toggle" aria-pressed={fillScreen} title="Expand the layout and scale the interface to fit your screen" onClick={() => setFillScreen((enabled) => !enabled)}><Maximize2 size={15} /><span>Fill screen</span><span className="screen-toggle-track" aria-hidden="true"><span /></span></button><span className="sync-status"><span className="status-dot" /> {csvImport ? savedLocally ? 'Saved in this browser' : 'Session only' : manualData.initialized ? 'Saved in this browser' : 'Sample data'}</span><button className="icon-button" aria-label="CSV export instructions" onClick={() => goToPage('instructions')}><CircleHelp size={17} /></button><div className="top-avatar">B</div></div></header>
         <div className="content">
-          <div className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot" /> YOUR JIU-JITSU JOURNEY</div><h1>{activePage === 'overview' ? 'Training overview' : activePage === 'sessions' ? 'Training sessions' : activePage === 'instructions' ? 'Get your training data' : '3D Data Lab'}</h1><p>A little progress every day adds up to a lot.</p></div><div className="heading-actions"><button className="button button-outline" onClick={downloadTemplate}><ArrowDownToLine size={15} /> Template</button><button className="button button-primary" onClick={() => fileRef.current?.click()}><Upload size={15} /> Import CSV</button><input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFileChange} hidden /></div></div>
+          <div className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot" /> YOUR JIU-JITSU JOURNEY</div><h1>{activePage === 'log' ? 'Log your training' : activePage === 'overview' ? 'Training overview' : activePage === 'sessions' ? 'Training sessions' : activePage === 'instructions' ? 'Get your training data' : '3D Data Lab'}</h1><p>A little progress every day adds up to a lot.</p></div><div className="heading-actions"><button className="button button-primary manual-entry-button" onClick={() => goToPage('log')}><Dumbbell size={16} /> Log training</button><button className="button button-outline" onClick={downloadTemplate}><ArrowDownToLine size={15} /> Template</button><button className="button button-primary" onClick={() => fileRef.current?.click()}><Upload size={15} /> Import CSV</button><input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFileChange} hidden /></div></div>
 
           <div className="import-strip" onClick={() => fileRef.current?.click()} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter') fileRef.current?.click() }}>
             <div className="import-icon"><FileSpreadsheet size={17} /></div><div className="import-copy"><strong>{uploadMessage || 'Your data, your dashboard'}</strong><span>{uploadMessage ? 'Your CSV stays on this device. Remove it using the file control above.' : 'Drop a CSV anywhere or click to upload. Your data never leaves your device.'}</span></div><button className="text-button" onClick={(event) => { event.stopPropagation(); fileRef.current?.click() }}>Choose file <ArrowUpRight size={14} /></button>
@@ -312,7 +329,7 @@ function App() {
 
           {storageMessage && <div className="storage-message" role="alert">{storageMessage}</div>}
           {(allocation.estimatedCount > 0 || allocation.unknownCount > 0) && <div className="style-estimate-note" role="status">{allocation.estimatedCount > 0 ? `${allocation.estimatedCount} unclassified sessions distributed proportionally using the known Gi / No-Gi split (${Math.round((allocation.giShare ?? 0) * 100)}% / ${Math.round((1 - (allocation.giShare ?? 0)) * 100)}%). Estimated styles are included throughout the dashboard.` : `${allocation.unknownCount} sessions remain unclassified: no known Gi or No-Gi records are available to calculate a ratio.`}</div>}
-          {activePage === 'instructions' ? <InstructionsPage /> : activePage === 'dev' ? <DevPage sessions={sessions} ranks={rankHistory} /> : activePage === 'overview' ? <>
+          {activePage === 'log' ? <ManualLog sessions={manualSessions} error={manualData.error || manualError} onSave={row => updateManual([...manualSessions.filter(item => item.id !== row.id), row])} onDelete={id => updateManual(manualSessions.filter(row => row.id !== id))} /> : activePage === 'instructions' ? <InstructionsPage /> : activePage === 'dev' ? <DevPage sessions={sessions} ranks={rankHistory} /> : activePage === 'overview' ? <>
             <div className="section-toolbar"><div className="section-title"><span className="live-dot" /> AT A GLANCE</div><div className="toolbar-controls"><span className="updated-label">Based on {filteredSessions.length} sessions</span><label className="select-wrap"><CalendarDays size={14} /><select value={period} onChange={(event) => setPeriod(event.target.value)}><option>All time</option><option>12 months</option><option>90 days</option><option>30 days</option><option>This year</option></select><ChevronDown size={13} /></label></div></div>
 
             <div className="stats-grid">
