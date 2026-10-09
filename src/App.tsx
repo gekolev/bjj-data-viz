@@ -357,6 +357,15 @@ function App() {
           </div>
         </div>
       </main>
+      <nav className="mobile-navigation" aria-label="Modules">
+        {([
+          { page: 'overview', label: 'Overview', icon: Activity },
+          { page: 'sessions', label: 'Sessions', icon: CalendarDays },
+          { page: 'log', label: 'Log training', icon: Dumbbell },
+          { page: 'dev', label: '3D Lab', icon: Box },
+          { page: 'instructions', label: 'Get CSV', icon: BookOpen },
+        ] as const).map(({ page, label, icon: Icon }) => <button key={page} className={activePage === page ? 'active' : undefined} aria-current={activePage === page ? 'page' : undefined} onClick={() => { if (activePage !== page) { goToPage(page); window.scrollTo({ top: 0, behavior: 'instant' }) } }}><Icon size={21} aria-hidden="true" /><span>{label}</span></button>)}
+      </nav>
       {accountOpen && <AccountModal onClose={() => setAccountOpen(false)} pending={workspace.busy} />}
     </div>
   )

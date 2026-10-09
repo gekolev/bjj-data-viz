@@ -40,4 +40,4 @@ Manual entries also record start time, defaulting to the current device hour (:0
 
 ### Accounts and cloud saving
 
-Firebase accounts provide email/password login, email verification and password reset. Verified accounts can save training sessions and rank history across devices. Guests continue using browser storage. Publish the checked-in Firestore rules before using cloud saves; see [Firebase setup and validation](docs/firebase-accounts.md). Account saves currently require an online connection.
+Firebase accounts provide email/password login, email verification and password reset. Verified accounts can save training sessions and rank history across devices. Guests continue using browser storage. Set VITE_FIREBASE_API_KEY in .env.local and your hosting build environment, then publish the checked-in Firestore rules before using cloud saves; see [Firebase setup and validation](docs/firebase-accounts.md). Account saves currently require an online connection.

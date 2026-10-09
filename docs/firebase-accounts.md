@@ -1,5 +1,9 @@
 # Firebase accounts and training sync
 
+## Configure the browser API key
+
+Copy .env.example to .env.local and set VITE_FIREBASE_API_KEY using your Firebase web configuration. Set this variable in your hosting build environment too, then rebuild/redeploy. See the API-key section below for handling GitHub alerts.
+
 ## Publish the access rules
 
 The app uses the default Firestore database in project bjj-data-viz-fb.
@@ -49,3 +53,13 @@ Account saves require an online connection; the first version does not queue off
 11. Test password reset, verification resend and an offline save attempt.
 
 Automated cloud-model checks are in tests/cloudModel.test.mjs. Run them with node --test tests/cloudModel.test.mjs tests/cloudStorage.test.mjs. The rules and live auth/email flows still require Firebase/emulator verification; TypeScript and pure data tests do not establish that production rules have been deployed.
+
+## Firebase browser API key and GitHub alerts
+
+The app reads VITE_FIREBASE_API_KEY from the Vite build environment. For local development, copy .env.example to .env.local and fill in your Firebase browser key. .env.local is ignored by Git. Restart the development server after changing environment variables. For deployment, set VITE_FIREBASE_API_KEY in the hosting provider's build environment and rebuild/redeploy. Vite substitutes the value into the frontend bundle; it is not a server-side secret.
+
+A Firebase browser key identifies the project, but does not authorize database access. In Google Cloud Console → APIs & Services → Credentials, inspect this project's browser key and confirm its API restrictions allow only the required Firebase APIs, with no unrelated APIs such as Generative Language API. Do not remove APIs needed by Firebase Authentication. Firebase Authentication authorized domains are a separate setting from API-key restrictions.
+
+Moving the key out of the source does not remove the previous Git commit or close GitHub's existing alert. After confirming the key is used only for Firebase and appropriately restricted, manually close the alert with a reason explaining intentional public Firebase configuration (for example, Won't fix). Include a comment that this key identifies the Firebase web app and database access is enforced by verified-user ownership rules. If the key also grants access to non-Firebase APIs, restrict/replace that key and revoke the old one after deploying the replacement; then close the alert as revoked.
+
+References: https://firebase.google.com/docs/projects/api-keys and https://docs.github.com/en/code-security/how-tos/manage-security-alerts/manage-secret-scanning-alerts/resolving-alerts
