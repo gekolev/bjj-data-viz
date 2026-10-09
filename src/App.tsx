@@ -296,7 +296,6 @@ function App() {
         <button className={`nav-item ${activePage === 'dev' ? 'active' : ''}`} onClick={() => goToPage('dev')}><Box size={17} /> 3D Data Lab</button>
         <div className="sidebar-divider" />
         <button className={`nav-item ${activePage === 'instructions' ? 'active' : ''}`} onClick={() => goToPage('instructions')}><BookOpen size={17} /> Get your CSV</button>
-        <button className="nav-item quiet" onClick={downloadTemplate}><FileSpreadsheet size={17} /> CSV template</button>
         <div className="sidebar-bottom">
           <div className="coach-card"><div className="coach-icon"><Sparkles size={16} /></div><strong>Make every round count.</strong><span>Your mat time, made visible.</span><button onClick={() => fileRef.current?.click()}>Import training data <ArrowUpRight size={13} /></button></div>
           <button className="profile" onClick={() => setAccountOpen(true)}><div className="profile-avatar">{(user?.displayName || 'B').slice(0, 1).toUpperCase()}</div><span className="profile-copy"><strong>{user?.displayName || 'My training'}</strong><small>{user ? user.emailVerified ? 'Account workspace' : 'Verify your email' : 'Create profile / Log in'}</small></span><MoreHorizontal size={17} /></button>
