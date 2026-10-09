@@ -2,6 +2,8 @@ import type { RankPromotion } from './rankHistory'
 
 export type ImportedSession = {
   id: number
+  cloudId?: string
+  cloudRevision?: number
   training: string
   date: Date
   duration: number

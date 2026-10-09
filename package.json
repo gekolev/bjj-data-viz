@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "test:journey": "node --test scripts/verify-training-journey.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:accounts": "node --test tests/cloudModel.test.mjs tests/cloudStorage.test.mjs"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.2.6",
@@ -23,6 +24,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
+    "firebase": "^13.0.0",
     "lucide-react": "^1.49.0",
     "papaparse": "^5.7.0",
     "react": "^19.2.8",

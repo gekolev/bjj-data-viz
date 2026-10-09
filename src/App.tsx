@@ -21,10 +21,12 @@ import { AnimatedArea as Area, AnimatedBar as Bar, AnimatedLine as Line, Animate
 import { allocateTrainingStyles } from './lib/allocateTrainingStyles'
 import { parseSession } from './lib/sessionParser'
 import InstructionsPage from './InstructionsPage'
-import { loadCsvImport, saveCsvImport, removeCsvImport, type CsvImport } from './lib/importStorage'
+import { useTrainingWorkspace } from './lib/useTrainingWorkspace'
+import { useAccount } from './components/AccountContext'
+import AccountModal from './components/AccountModal'
 import SessionBrowser from './components/SessionBrowser'
 import ManualLog from './components/ManualLog'
-import { loadManualSessions, saveManualSessions, type ManualSession } from './lib/manualStorage'
+
 import { ranksFromCsvRows, normalizeRankHistory, type RankPromotion } from './lib/rankHistory'
 import { PromotionSummary } from './components/RankContext'
 
@@ -125,20 +127,14 @@ function App() {
     }
   }, [fillScreen])
 
-  const [csvImport, setCsvImport] = useState<CsvImport | null>(() => loadCsvImport())
-  const [savedLocally, setSavedLocally] = useState(true)
-  const [storageMessage, setStorageMessage] = useState('')
+  const workspace = useTrainingWorkspace()
+  const { user } = useAccount()
+  const [accountOpen, setAccountOpen] = useState(false)
+  const { csvImport, manualData, updateManual, deleteManual, importCsv, removeImport } = workspace
+  const savedLocally = true
+  const storageMessage = workspace.error
   const rankHistory = useMemo(() => normalizeRankHistory(csvImport?.ranks ?? []), [csvImport])
-  const [manualData, setManualData] = useState(() => loadManualSessions())
-  const [manualError, setManualError] = useState('')
   const manualSessions = manualData.sessions
-  const updateManual = (next: ManualSession[]) => {
-    if (manualData.error) return false
-    if (!saveManualSessions(next)) { setManualError('Training could not be saved. Browser storage may be full or unavailable. Your changes have not been applied; please try again.'); return false }
-    setManualData({ sessions: next, error: '', initialized: true })
-    setManualError('')
-    return true
-  }
   const sourceSessions = useMemo(() => {
     const imported = csvImport?.sessions ?? (manualData.initialized ? [] : initialSessions)
     return [...imported, ...manualSessions].map((row, id) => ({ ...row, id }))
@@ -241,23 +237,20 @@ function App() {
 
   const handleFiles = (files: FileList | null) => {
     const file = files?.[0]
-    if (!file) return
+    if (!file || workspace.busy || !workspace.ready) return
     if (!file.name.toLowerCase().endsWith('.csv')) {
       setUploadMessage('Please choose a .csv file.')
       return
     }
     const request = ++importRequest.current
     setUploadMessage(`Reading ${file.name}...`)
-    sessionsFromCsv(file, (rows, error, ranks = [], skippedRanks = 0) => {
+    sessionsFromCsv(file, async (rows, error, ranks = [], skippedRanks = 0) => {
       if (request !== importRequest.current) return
       if (error) setUploadMessage(error)
       else {
         const nextImport = { fileName: file.name, sessions: rows, ranks }
-        const saved = saveCsvImport(nextImport)
-        const cleared = saved || removeCsvImport()
-        setCsvImport(nextImport)
-        setSavedLocally(saved)
-        setStorageMessage(saved ? '' : cleared ? 'Browser storage is unavailable or full. This CSV is loaded for this session only; refresh will clear it.' : 'This CSV could not be saved, and the previous saved CSV could not be cleared. Refresh may restore the previous file. Clear this site’s browser data to remove it.')
+        if (!await importCsv(nextImport)) { setUploadMessage('CSV could not be saved. Please try again.'); return }
+        if (request !== importRequest.current) return
         if (rows.length) setAnnualYear(Math.max(...rows.map((row) => row.date.getFullYear())))
         setUploadMessage(`${rows.length} sessions and ${ranks.length} rank records imported from ${file.name}${skippedRanks ? ` (${skippedRanks} rank records skipped: missing rank or invalid date)` : ''}`)
       }
@@ -268,19 +261,13 @@ function App() {
     handleFiles(event.target.files)
     event.target.value = ''
   }
-  const removeFile = () => {
-    if (!removeCsvImport()) {
-      setStorageMessage('The saved CSV could not be removed. Allow browser storage access and try again, or clear this site’s browser data.')
-      return
-    }
+  const removeFile = async () => {
+    if (workspace.busy || !workspace.ready) return
+    if (workspace.cloud && !window.confirm('Remove all imported sessions and rank history from your account on every device? Your manual log will be kept.')) return
+    if (!await removeImport()) return
     importRequest.current++
-    setCsvImport(null)
-    setSavedLocally(true)
-    setStorageMessage('')
-    setUploadMessage('CSV removed from this browser. ' + (manualData.initialized ? 'Your manual log is still available.' : 'Showing sample data.'))
-    setQuery('')
-    setStyleFilter('All styles')
-    setPeriod('All time')
+    setUploadMessage(workspace.cloud ? 'Imported training removed from your account.' : 'CSV removed from this browser. ' + (manualData.initialized ? 'Your manual log is still available.' : 'Showing sample data.'))
+    setQuery(''); setStyleFilter('All styles'); setPeriod('All time')
     if (fileRef.current) fileRef.current.value = ''
   }
   const onDrop = (event: DragEvent<HTMLDivElement>) => {
@@ -313,23 +300,28 @@ function App() {
         <button className="nav-item quiet" onClick={downloadTemplate}><FileSpreadsheet size={17} /> CSV template</button>
         <div className="sidebar-bottom">
           <div className="coach-card"><div className="coach-icon"><Sparkles size={16} /></div><strong>Make every round count.</strong><span>Your mat time, made visible.</span><button onClick={() => fileRef.current?.click()}>Import training data <ArrowUpRight size={13} /></button></div>
-          <button className="profile"><div className="profile-avatar">B</div><span className="profile-copy"><strong>My training</strong><small>Personal workspace</small></span><MoreHorizontal size={17} /></button>
+          <button className="profile" onClick={() => setAccountOpen(true)}><div className="profile-avatar">{(user?.displayName || 'B').slice(0, 1).toUpperCase()}</div><span className="profile-copy"><strong>{user?.displayName || 'My training'}</strong><small>{user ? user.emailVerified ? 'Account workspace' : 'Verify your email' : 'Create profile / Log in'}</small></span><MoreHorizontal size={17} /></button>
         </div>
       </aside>
 
       <main className="main-area">
-        <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><strong>{activePage === 'log' ? 'Log training' : activePage === 'overview' ? 'Overview' : activePage === 'sessions' ? 'Sessions' : activePage === 'instructions' ? 'Get your CSV' : '3D Data Lab'}</strong></div><div className="top-actions">{csvImport && <div className="current-csv" title={`${csvImport.fileName} — ${savedLocally ? 'Saved only in this browser' : 'Session only'}`}><FileSpreadsheet size={15} /><span className="current-csv-name">{csvImport.fileName}</span><button className="current-csv-remove" aria-label={`Remove ${csvImport.fileName} and delete its saved data`} title="Remove CSV and delete saved data" onClick={removeFile}><X size={14} /></button></div>}<button className="screen-toggle" aria-pressed={fillScreen} title="Expand the layout and scale the interface to fit your screen" onClick={() => setFillScreen((enabled) => !enabled)}><Maximize2 size={15} /><span>Fill screen</span><span className="screen-toggle-track" aria-hidden="true"><span /></span></button><span className="sync-status"><span className="status-dot" /> {csvImport ? savedLocally ? 'Saved in this browser' : 'Session only' : manualData.initialized ? 'Saved in this browser' : 'Sample data'}</span><button className="icon-button" aria-label="CSV export instructions" onClick={() => goToPage('instructions')}><CircleHelp size={17} /></button><div className="top-avatar">B</div></div></header>
+        <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><strong>{activePage === 'log' ? 'Log training' : activePage === 'overview' ? 'Overview' : activePage === 'sessions' ? 'Sessions' : activePage === 'instructions' ? 'Get your CSV' : '3D Data Lab'}</strong></div><div className="top-actions">{csvImport && <div className="current-csv" title={`${csvImport.fileName} — ${workspace.cloud ? 'Saved to your account' : savedLocally ? 'Saved only in this browser' : 'Session only'}`}><FileSpreadsheet size={15} /><span className="current-csv-name">{csvImport.fileName}</span><button className="current-csv-remove" aria-label={`Remove ${csvImport.fileName} and delete its saved data`} title="Remove CSV and delete saved data" disabled={!workspace.ready || workspace.busy} onClick={() => void removeFile()}><X size={14} /></button></div>}<button className="screen-toggle" aria-pressed={fillScreen} title="Expand the layout and scale the interface to fit your screen" onClick={() => setFillScreen((enabled) => !enabled)}><Maximize2 size={15} /><span>Fill screen</span><span className="screen-toggle-track" aria-hidden="true"><span /></span></button><span className="sync-status"><span className="status-dot" /> {workspace.cloud ? workspace.status : csvImport || manualData.initialized ? 'Saved in this browser' : 'Sample data'}</span><button className="icon-button" aria-label="CSV export instructions" onClick={() => goToPage('instructions')}><CircleHelp size={17} /></button><button className="top-avatar account-avatar-button" aria-label="Open profile" onClick={() => setAccountOpen(true)}>{(user?.displayName || 'B').slice(0, 1).toUpperCase()}</button></div></header>
         <div className="content">
-          <div className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot" /> YOUR JIU-JITSU JOURNEY</div><h1>{activePage === 'log' ? 'Log your training' : activePage === 'overview' ? 'Training overview' : activePage === 'sessions' ? 'Training sessions' : activePage === 'instructions' ? 'Get your training data' : '3D Data Lab'}</h1><p>A little progress every day adds up to a lot.</p></div><div className="heading-actions"><button className="button button-primary manual-entry-button" onClick={() => goToPage('log')}><Dumbbell size={16} /> Log training</button><button className="button button-outline" onClick={downloadTemplate}><ArrowDownToLine size={15} /> Template</button><button className="button button-primary" onClick={() => fileRef.current?.click()}><Upload size={15} /> Import CSV</button><input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFileChange} hidden /></div></div>
+          {user && !user.emailVerified && <div className="account-banner"><p>Verify your email to save training to your account. You’re currently using this browser’s guest data.</p><button className="button button-outline" onClick={() => setAccountOpen(true)}>Verify email</button></div>}
+          {workspace.cloud && workspace.hasGuestData && <div className="account-banner"><p>This browser has guest training data. Import it into your account? Existing account records will be kept.</p><button className="button button-primary" disabled={!workspace.ready || workspace.busy} onClick={() => void workspace.importGuest()}>Import browser data</button><button className="button button-outline" disabled={workspace.busy} onClick={workspace.dismissGuest}>Not now</button></div>}
+          {workspace.cloud && !workspace.ready && <div className="account-banner"><p>Connecting to your account. Training changes are available once the cloud connection is ready.</p><button className="button button-outline" onClick={workspace.retry}>Retry connection</button></div>}
+          {workspace.cacheWarning && <div className="account-banner"><p>{workspace.cacheWarning}</p></div>}
+          <div className="page-heading" inert={!workspace.ready || workspace.busy}><div><div className="eyebrow"><span className="eyebrow-dot" /> YOUR JIU-JITSU JOURNEY</div><h1>{activePage === 'log' ? 'Log your training' : activePage === 'overview' ? 'Training overview' : activePage === 'sessions' ? 'Training sessions' : activePage === 'instructions' ? 'Get your training data' : '3D Data Lab'}</h1><p>A little progress every day adds up to a lot.</p></div><div className="heading-actions"><button className="button button-primary manual-entry-button" onClick={() => goToPage('log')}><Dumbbell size={16} /> Log training</button><button className="button button-outline" onClick={downloadTemplate}><ArrowDownToLine size={15} /> Template</button><button className="button button-primary" onClick={() => fileRef.current?.click()}><Upload size={15} /> Import CSV</button><input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFileChange} hidden /></div></div>
 
-          <div className="import-strip" onClick={() => fileRef.current?.click()} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter') fileRef.current?.click() }}>
-            <div className="import-icon"><FileSpreadsheet size={17} /></div><div className="import-copy"><strong>{uploadMessage || 'Your data, your dashboard'}</strong><span>{uploadMessage ? 'Your CSV stays on this device. Remove it using the file control above.' : 'Drop a CSV anywhere or click to upload. Your data never leaves your device.'}</span></div><button className="text-button" onClick={(event) => { event.stopPropagation(); fileRef.current?.click() }}>Choose file <ArrowUpRight size={14} /></button>
+          <div inert={!workspace.ready || workspace.busy} className="import-strip" onClick={() => fileRef.current?.click()} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter') fileRef.current?.click() }}>
+            <div className="import-icon"><FileSpreadsheet size={17} /></div><div className="import-copy"><strong>{uploadMessage || 'Your data, your dashboard'}</strong><span>{workspace.cloud ? 'CSV records are added to your account. Existing training is kept.' : uploadMessage ? 'Your CSV stays in this browser until you import it into an account.' : 'Drop a CSV anywhere or click to upload. Create a profile to save across devices.'}</span></div><button className="text-button" onClick={(event) => { event.stopPropagation(); fileRef.current?.click() }}>Choose file <ArrowUpRight size={14} /></button>
           </div>
           {uploadMessage && uploadMessage.includes('Please') || uploadMessage.startsWith('No sessions') || uploadMessage.startsWith('We couldn’t') ? <div className="upload-error"><X size={14} />{uploadMessage}</div> : null}
 
           {storageMessage && <div className="storage-message" role="alert">{storageMessage}</div>}
           {(allocation.estimatedCount > 0 || allocation.unknownCount > 0) && <div className="style-estimate-note" role="status">{allocation.estimatedCount > 0 ? `${allocation.estimatedCount} unclassified sessions distributed proportionally using the known Gi / No-Gi split (${Math.round((allocation.giShare ?? 0) * 100)}% / ${Math.round((1 - (allocation.giShare ?? 0)) * 100)}%). Estimated styles are included throughout the dashboard.` : `${allocation.unknownCount} sessions remain unclassified: no known Gi or No-Gi records are available to calculate a ratio.`}</div>}
-          {activePage === 'log' ? <ManualLog sessions={manualSessions} error={manualData.error || manualError} onSave={row => updateManual([...manualSessions.filter(item => item.id !== row.id), row])} onDelete={id => updateManual(manualSessions.filter(row => row.id !== id))} /> : activePage === 'instructions' ? <InstructionsPage /> : activePage === 'dev' ? <DevPage sessions={sessions} ranks={rankHistory} /> : activePage === 'overview' ? <>
+          <div inert={!workspace.ready || workspace.busy}>
+          {activePage === 'log' ? <ManualLog key={user?.uid ?? 'guest'} sessions={manualSessions} error={manualData.error} cloud={workspace.cloud} onSave={row => updateManual([...manualSessions.filter(item => row.cloudId ? item.cloudId !== row.cloudId : item.id !== row.id), row])} onDelete={deleteManual} /> : activePage === 'instructions' ? <InstructionsPage /> : activePage === 'dev' ? <DevPage sessions={sessions} ranks={rankHistory} /> : activePage === 'overview' ? <>
             <div className="section-toolbar"><div className="section-title"><span className="live-dot" /> AT A GLANCE</div><div className="toolbar-controls"><span className="updated-label">Based on {filteredSessions.length} sessions</span><label className="select-wrap"><CalendarDays size={14} /><select value={period} onChange={(event) => setPeriod(event.target.value)}><option>All time</option><option>12 months</option><option>90 days</option><option>30 days</option><option>This year</option></select><ChevronDown size={13} /></label></div></div>
 
             <div className="stats-grid">
@@ -362,8 +354,10 @@ function App() {
             <section className="panel sessions-panel">
               <div className="panel-heading sessions-heading"><div><h2>Recent sessions</h2><p>A record of time well spent</p></div><button className="button button-ghost" onClick={() => goToPage('sessions')}>View all <ArrowUpRight size={14} /></button></div><div className="table-tools"><label className="search-field"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sessions..." /></label><label className="filter-select"><Filter size={14} /><select value={styleFilter} onChange={(event) => setStyleFilter(event.target.value)}><option>All styles</option><option>Gi</option><option>NoGi</option></select><ChevronDown size={13} /></label></div><SessionTable sessions={filteredSessions.slice(0, 5)} /><div className="table-footer"><span>Showing {Math.min(filteredSessions.length, 5)} of {filteredSessions.length} sessions</span><button onClick={() => goToPage('sessions')}>See all sessions <ArrowUpRight size={13} /></button></div></section>
           </> : <SessionBrowser key={csvImport?.fileName ?? 'sample'} sessions={sessions} initialQuery={query} initialStyle={styleFilter} renderTable={rows => <SessionTable sessions={rows} />} />}
+          </div>
         </div>
       </main>
+      {accountOpen && <AccountModal onClose={() => setAccountOpen(false)} pending={workspace.busy} />}
     </div>
   )
 }

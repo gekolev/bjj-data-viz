@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function owner(uid) {
+      return request.auth != null && request.auth.uid == uid && request.auth.token.email_verified == true;
+    }
+    function text(value, limit) { return value is string && value.size() <= limit; }
+    function validData(kind, d) {
+      return d is map && d.id is int && text(d.date, 40)
+        && (kind == 'rank' ? (
+          d.keys().hasAll(['id', 'date', 'rank', 'stripes', 'discipline', 'status', 'details'])
+          && d.keys().hasOnly(['id', 'date', 'rank', 'stripes', 'discipline', 'status', 'details'])
+          && text(d.rank, 500) && (d.stripes == null || (d.stripes is int && d.stripes >= 0))
+          && text(d.discipline, 500) && text(d.status, 500) && text(d.details, 20000)
+        ) : (
+          d.keys().hasAll(['id', 'date', 'training', 'duration', 'style', 'classType', 'venue', 'instructor'])
+          && d.keys().hasOnly(['id', 'date', 'training', 'duration', 'style', 'classType', 'venue', 'instructor', 'styleEstimated', 'durationEstimated', 'timeRecorded', 'notes', 'rounds', 'effort', 'focus'])
+          && text(d.training, 2000) && d.duration is number && d.duration >= 0 && d.duration <= 1440
+          && d.style in ['Gi', 'NoGi', 'Other'] && text(d.classType, 500)
+          && text(d.venue, 500) && text(d.instructor, 500)
+          && d.get('styleEstimated', false) is bool && d.get('durationEstimated', false) is bool && d.get('timeRecorded', false) is bool
+          && (kind != 'manual' || (d.style in ['Gi', 'NoGi'] && d.duration is int && d.duration >= 1
+            && text(d.notes, 2000) && (d.get('rounds', null) == null || (d.rounds is int && d.rounds >= 0 && d.rounds <= 100))
+            && d.get('effort', '') in ['', 'Light', 'Moderate', 'Hard']
+            && d.get('focus', []) is list && d.get('focus', []).size() <= 20))
+        ));
+    }
+    function validRecord() {
+      let r = request.resource.data;
+      return r.keys().hasAll(['kind', 'data', 'revision', 'deleted', 'updatedAt', 'fileName'])
+        && r.keys().hasOnly(['kind', 'data', 'revision', 'deleted', 'updatedAt', 'fileName'])
+        && r.kind in ['imported', 'manual', 'rank'] && validData(r.kind, r.data)
+        && r.revision is int && r.revision > 0 && r.deleted is bool
+        && r.updatedAt == request.time && text(r.fileName, 500);
+    }
+    match /users/{uid} {
+      allow read: if owner(uid);
+      allow create, update: if owner(uid)
+        && request.resource.data.keys().hasOnly(['displayName', 'updatedAt'])
+        && text(request.resource.data.displayName, 80)
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+      match /records/{recordId} {
+        allow read: if owner(uid);
+        allow create: if owner(uid) && validRecord() && request.resource.data.revision == 1 && !request.resource.data.deleted;
+        allow update: if owner(uid) && validRecord()
+          && request.resource.data.kind == resource.data.kind
+          && request.resource.data.revision == resource.data.revision + 1;
+        // Keep deletion markers so devices can fetch incremental changes safely.
+        allow delete: if false;
+      }
+    }
+  }
+}

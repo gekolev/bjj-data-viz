@@ -7,9 +7,9 @@ const today = () => { const date = new Date(); return [date.getFullYear(), Strin
 const currentHour = () => String(new Date().getHours()).padStart(2, '0') + ':00'
 const dateDaysAgo = (days: number) => { const date = new Date(); date.setDate(date.getDate() - days); return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-') }
 const focusOptions = ['Guard passing', 'Guard retention', 'Escapes', 'Submissions', 'Takedowns', 'Positional sparring', 'Drilling', 'Live rounds']
-type Props = { sessions: ManualSession[]; error: string; onSave: (session: ManualSession) => boolean; onDelete: (id: number) => boolean }
+type Props = { sessions: ManualSession[]; error: string; cloud?: boolean; onSave: (session: ManualSession) => boolean | Promise<boolean>; onDelete: (session: ManualSession) => boolean | Promise<boolean> }
 
-export default function ManualLog({ sessions, error, onSave, onDelete }: Props) {
+export default function ManualLog({ sessions, error, cloud = false, onSave, onDelete }: Props) {
   const latest = [...sessions].sort((a, b) => b.id - a.id)[0]
   const [date, setDate] = useState(today)
   const dateInput = useRef<HTMLInputElement>(null)
@@ -32,26 +32,33 @@ export default function ManualLog({ sessions, error, onSave, onDelete }: Props) 
   const [instructor, setInstructor] = useState(latest?.instructor ?? '')
   const [notes, setNotes] = useState('')
   const [editing, setEditing] = useState<number | null>(null)
-  const [deleting, setDeleting] = useState<number | null>(null)
+  const [deleting, setDeleting] = useState<ManualSession | null>(null)
+  const [editingRecord, setEditingRecord] = useState<ManualSession | null>(null)
   const [message, setMessage] = useState('')
   const [details, setDetails] = useState(false)
-  const submit = (event: FormEvent) => {
+  const [saving, setSaving] = useState(false)
+  const submit = async (event: FormEvent) => {
     event.preventDefault()
+    if (saving) return
     const minutes = Number(duration)
     const parsed = new Date(date + 'T' + time + ':00')
     if (!date || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time) || !Number.isFinite(parsed.getTime()) || date > today() || !Number.isInteger(minutes) || minutes < 1 || minutes > 1440) { setMessage('Choose a valid date and time up to today and a duration from 1 to 1440 minutes.'); return }
     if (rounds !== undefined && (!Number.isInteger(rounds) || rounds < 0 || rounds > 100)) { setMessage('Choose between 0 and 100 sparring rounds.'); return }
     const type = classType.trim() || 'Training'
-    const record: ManualSession = { id: editing ?? Math.max(Date.now(), ...sessions.map(row => row.id + 1)), date: parsed, duration: minutes, style, classType: type, venue: venue.trim(), instructor: instructor.trim(), notes: notes.trim(), training: type + ' - ' + (style === 'NoGi' ? 'No-Gi' : 'Gi') + (venue.trim() ? ' - ' + venue.trim() : ''), timeRecorded: true, rounds, effort, focus }
-    if (onSave(record)) { setMessage(editing === null ? 'Training saved on this device. Your dashboard is updated.' : 'Training updated.'); setEditing(null); setNotes(''); setRounds(undefined); setEffort(''); setFocus([]); setDate(today()); setTime(currentHour()) }
+    const record: ManualSession = { cloudId: editingRecord?.cloudId, cloudRevision: editingRecord?.cloudRevision, id: editing ?? Math.max(Date.now(), ...sessions.map(row => row.id + 1)), date: parsed, duration: minutes, style, classType: type, venue: venue.trim(), instructor: instructor.trim(), notes: notes.trim(), training: type + ' - ' + (style === 'NoGi' ? 'No-Gi' : 'Gi') + (venue.trim() ? ' - ' + venue.trim() : ''), timeRecorded: true, rounds, effort, focus }
+    setSaving(true)
+    try {
+    if (await onSave(record)) { setMessage(editing === null ? cloud ? 'Training saved to your account. Your dashboard is updated.' : 'Training saved on this device. Your dashboard is updated.' : 'Training updated.'); setEditing(null); setEditingRecord(null); setNotes(''); setRounds(undefined); setEffort(''); setFocus([]); setDate(today()); setTime(currentHour()) }
+    } finally { setSaving(false) }
   }
   const edit = (row: ManualSession) => {
-    setEditing(row.id); setTime(row.timeRecorded ? String(row.date.getHours()).padStart(2, '0') + ':' + String(row.date.getMinutes()).padStart(2, '0') : currentHour()); setRounds(row.rounds); setEffort(row.effort ?? ''); setFocus(row.focus ?? []); setDate([row.date.getFullYear(), String(row.date.getMonth() + 1).padStart(2, '0'), String(row.date.getDate()).padStart(2, '0')].join('-')); setStyle(row.style === 'NoGi' ? 'NoGi' : 'Gi'); setDuration(String(row.duration)); setClassType(row.classType); setVenue(row.venue); setInstructor(row.instructor); setNotes(row.notes); setDetails(true); setMessage(''); window.scrollTo({ top: 0, behavior: 'smooth' })
+    setEditingRecord(row); setEditing(row.id); setTime(row.timeRecorded ? String(row.date.getHours()).padStart(2, '0') + ':' + String(row.date.getMinutes()).padStart(2, '0') : currentHour()); setRounds(row.rounds); setEffort(row.effort ?? ''); setFocus(row.focus ?? []); setDate([row.date.getFullYear(), String(row.date.getMonth() + 1).padStart(2, '0'), String(row.date.getDate()).padStart(2, '0')].join('-')); setStyle(row.style === 'NoGi' ? 'NoGi' : 'Gi'); setDuration(String(row.duration)); setClassType(row.classType); setVenue(row.venue); setInstructor(row.instructor); setNotes(row.notes); setDetails(true); setMessage(''); window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   return <section className="manual-log">
-    <div className="manual-intro"><h2>Log your mat time</h2><p>No Gymdesk needed. Pick your session and save in a few taps.</p><small>Stored only in this browser on this device. Clearing site data removes your log.</small></div>
+    <div className="manual-intro"><h2>Log your mat time</h2><p>No Gymdesk needed. Pick your session and save in a few taps.</p><small>{cloud ? 'Saved to your account after each successful save. Available when you log in on another device.' : 'Stored only in this browser on this device. Clearing site data removes your log.'}</small></div>
     {error && <p className="manual-error" role="alert">{error}</p>}
     <form className="manual-form" onSubmit={submit}>
+      <fieldset className="manual-save-fields" disabled={saving}>
       <h3>{editing === null ? 'New training session' : 'Edit training session'}</h3>
       <div className="manual-options manual-date-presets">{[0, 1, 2].map(days => <button key={days} type="button" aria-pressed={date === dateDaysAgo(days)} onClick={() => setDate(dateDaysAgo(days))}>{days === 0 ? 'Today' : days === 1 ? 'Yesterday' : '2 days ago'}</button>)}</div>
       <div className="manual-date-row"><label htmlFor="manual-training-date">Training date<input ref={dateInput} id="manual-training-date" type="date" required max={today()} value={date} onChange={event => setDate(event.target.value)} aria-describedby="manual-date-hint" /></label><button type="button" className="manual-calendar-button" onClick={openCalendar} aria-label="Open calendar to log an older training session" title="Choose an older training date"><CalendarDays size={22} aria-hidden="true" /></button></div>
@@ -68,9 +75,10 @@ export default function ManualLog({ sessions, error, onSave, onDelete }: Props) 
       {details && <div className="manual-extra"><fieldset><legend>Recent gyms</legend><div className="manual-options manual-wrap">{['', ...gyms].map(value => <button key={value} type="button" aria-pressed={venue === value} onClick={() => setVenue(value)}>{value || 'Not recorded'}</button>)}</div></fieldset><label>Gym<input maxLength={160} autoComplete="organization" value={venue} onChange={event => setVenue(event.target.value)} placeholder="Your gym" /></label><fieldset><legend>Recent instructors</legend><div className="manual-options manual-wrap">{['', ...instructors].map(value => <button key={value} type="button" aria-pressed={instructor === value} onClick={() => setInstructor(value)}>{value || 'Not recorded'}</button>)}</div></fieldset><label>Instructor<input maxLength={160} value={instructor} onChange={event => setInstructor(event.target.value)} placeholder="Instructor name" /></label><label>Notes<textarea maxLength={2000} rows={3} value={notes} onChange={event => setNotes(event.target.value)} placeholder="Techniques, rounds, or something to work on" /></label></div>}
       <div className="manual-save"><button type="submit" className="button button-primary">{editing === null ? 'Save training' : 'Save changes'}</button>{editing !== null && <button type="button" onClick={() => { setEditing(null); setNotes(''); setRounds(undefined); setEffort(''); setFocus([]); setDate(today()); setTime(currentHour()); setMessage('') }}>Cancel edit</button>}</div>
       <p className="manual-status" role="status">{message}</p>
+      </fieldset>
     </form>
     <div className="manual-history"><h3>Your manual sessions <span>({sessions.length})</span></h3>{!sessions.length && <p>Your first session starts here. Save a training above to see your progress.</p>}
-      {[...sessions].sort((a, b) => b.date.getTime() - a.date.getTime() || b.id - a.id).map(row => <article key={row.id}><div><strong>{row.classType} · {row.style === 'NoGi' ? 'No-Gi' : row.style}</strong><p>{row.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}{row.timeRecorded && ' · ' + row.date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })} · {row.duration} min</p>{row.venue && <p>{row.venue}{row.instructor ? ' · ' + row.instructor : ''}</p>}{!row.venue && row.instructor && <p>{row.instructor}</p>}{row.focus?.length ? <p>Focus: {row.focus.join(', ')}</p> : null}{row.rounds !== undefined && <p>{row.rounds} sparring rounds</p>}{row.effort && <p>Effort: {row.effort}</p>}{row.notes && <p className="manual-notes">{row.notes}</p>}</div><div className="manual-record-actions"><button type="button" onClick={() => edit(row)}>Edit</button>{deleting === row.id ? <><button type="button" onClick={() => { if (onDelete(row.id)) { setDeleting(null); if (editing === row.id) { setEditing(null); setNotes(''); setRounds(undefined); setEffort(''); setFocus([]); setDate(today()); setTime(currentHour()) } setMessage('Training deleted.'); } }}>Confirm delete</button><button type="button" onClick={() => setDeleting(null)}>Keep</button></> : <button type="button" onClick={() => setDeleting(row.id)}>Delete</button>}</div></article>)}
+      {[...sessions].sort((a, b) => b.date.getTime() - a.date.getTime() || b.id - a.id).map(row => <article key={row.id}><div><strong>{row.classType} · {row.style === 'NoGi' ? 'No-Gi' : row.style}</strong><p>{row.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}{row.timeRecorded && ' · ' + row.date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })} · {row.duration} min</p>{row.venue && <p>{row.venue}{row.instructor ? ' · ' + row.instructor : ''}</p>}{!row.venue && row.instructor && <p>{row.instructor}</p>}{row.focus?.length ? <p>Focus: {row.focus.join(', ')}</p> : null}{row.rounds !== undefined && <p>{row.rounds} sparring rounds</p>}{row.effort && <p>Effort: {row.effort}</p>}{row.notes && <p className="manual-notes">{row.notes}</p>}</div><div className="manual-record-actions"><button type="button" onClick={() => edit(row)}>Edit</button>{deleting && (deleting.cloudId ? deleting.cloudId === row.cloudId : deleting.id === row.id) ? <><button type="button" disabled={saving} onClick={async () => { if (saving) return; setSaving(true); try { if (await onDelete(deleting)) { setDeleting(null); if (editing === row.id) { setEditing(null); setNotes(''); setRounds(undefined); setEffort(''); setFocus([]); setDate(today()); setTime(currentHour()) } setMessage('Training deleted.'); } } finally { setSaving(false) } }}>Confirm delete</button><button type="button" onClick={() => setDeleting(null)}>Keep</button></> : <button type="button" onClick={() => setDeleting(row)}>Delete</button>}</div></article>)}
     </div>
   </section>
 }

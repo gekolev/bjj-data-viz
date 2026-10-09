@@ -1,5 +1,7 @@
 export type RankPromotion = {
   id: number
+  cloudId?: string
+  cloudRevision?: number
   date: Date
   rank: string
   stripes: number | null
