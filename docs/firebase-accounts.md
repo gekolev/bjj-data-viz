@@ -30,7 +30,7 @@ Unverified users continue using guest browser data. Verified users use a separat
 ## Existing browser data
 
 The account workspace offers “Import browser data”. This adds guest sessions and promotions without replacing existing account records. Matching records are deduplicated. Guest browser storage is preserved after import and logout.
-Account CSV uploads are additive; guest CSV uploads continue replacing the guest CSV. Removing imported account data requires confirmation and removes imported sessions and promotions on every device, while retaining manual entries. Explicitly uploading a CSV again can restore its deleted records; importing guest data does not restore deleted records.
+Account CSV uploads are additive; guest CSV uploads continue replacing the guest CSV. The CSV removal control is available only when logged out. Logged-in users, including users awaiting email verification, cannot remove imported CSV data through the app. Manual entries can still be edited and deleted. Explicitly uploading a CSV again can restore previously deleted records; importing guest data does not restore deleted records.
 
 ## Sync and conflicts
 

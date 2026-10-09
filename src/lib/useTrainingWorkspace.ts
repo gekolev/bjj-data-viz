@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAccount } from '../components/AccountContext'
+import { auth } from './firebase'
 import { authError } from './authErrors'
 import { loadCsvImport, removeCsvImport, saveCsvImport, type CsvImport } from './importStorage'
 import { loadManualSessions, saveManualSessions, type ManualSession } from './manualStorage'
@@ -86,10 +87,7 @@ export function useTrainingWorkspace() {
     setCsvImport(next); setHasGuestData(true); setError(''); return true
   }
   const removeImport = async () => {
-    if (uid) {
-      const changes: Change[] = Object.entries(records.current).filter(([, r]) => !r.deleted && r.kind !== 'manual').map(([id, r]) => ({ id, kind: r.kind, data: r.data, fileName: r.fileName, deleted: true, expectedRevision: r.revision }))
-      return write(changes)
-    }
+    if (user || auth.currentUser) return false
     if (!removeCsvImport()) { setError('The saved CSV could not be removed. Allow browser storage access and try again.'); return false }
     setCsvImport(null); setHasGuestData(manualData.sessions.length > 0); setError(''); return true
   }
