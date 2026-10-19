@@ -4,6 +4,19 @@ const json = (data, status = 200) => Response.json(data, { status, headers: { 'C
 const CARD_TITLES = ['You kept showing up', 'Your sessions', 'Your mat time', 'Your training DNA', 'Your peak chapter', 'Your training rhythm', 'Your go-to class', 'In your corner', 'Your big mat day']
 const cardContentId = (year, index) => `wrapped-${year}-card-${index + 1}`
 
+function providerFailure(status, detail) {
+  const message = typeof detail?.message === 'string' ? detail.message.toLowerCase() : ''
+  const name = typeof detail?.name === 'string' ? detail.name : ''
+  if (status === 401 || /api key is (invalid|not active|suspended)|missing api key/.test(message)) return { status: 503, code: 'email_credentials', error: 'The production email API key is invalid or inactive. Update RESEND_API_KEY in Cloudflare Worker secrets.' }
+  if (/only send testing emails|resend\.dev/.test(message)) return { status: 503, code: 'email_test_sender', error: 'Resend’s test sender can only email the Resend account owner. Set WRAPPED_EMAIL_FROM in Cloudflare to an address on your verified Resend domain to email other recipients.' }
+  if (/domain.*(not verified|not.*verified)|verify.*domain/.test(message)) return { status: 503, code: 'email_sender_domain', error: 'The production sender domain is not verified in Resend. Verify it and update WRAPPED_EMAIL_FROM in Cloudflare.' }
+  if (status === 413 || /size|too large|40mb|40 mb/.test(message)) return { status: 413, code: 'email_size', error: 'The email images exceed the delivery service size limit. Download the ZIP instead.' }
+  if (status === 429 || /quota|rate.limit/.test(name)) return { status: 429, code: 'email_provider_limit', error: 'The email service rate limit or sending quota was reached. Check Resend usage before trying again.' }
+  if (status === 403) return { status: 502, code: 'email_permission', error: 'Resend denied this send. Check the production API key’s sending permissions, sender domain, and account status.' }
+  if (status === 400 || status === 422) return { status: 502, code: 'email_validation', error: 'Resend rejected the email format or attachments. Check the failed send in the Resend API logs.' }
+  return { status: 502, code: 'email_provider_unavailable', error: 'The email service could not send your recap. Please try again later.' }
+}
+
 const CARD_DESCRIPTIONS = ['A celebration of the work you put in, one session at a time.', 'How often you showed up and invested in your training.', 'The hours and minutes you dedicated to learning on the mat.', 'Your balance of Gi, No-Gi, and other training styles.', 'The month when you logged the most sessions.', 'Your most-trained weekday and longest consecutive-day streak.', 'The class you returned to most often.', 'The coaches who guided your training.', 'Your highest number of sessions in a single day.']
 const SECTIONS = { 0: '01 / The work you put in', 3: '02 / How you trained', 6: '03 / Your training highlights' }
 
@@ -79,9 +92,9 @@ export async function handleEmail(request, env, send = fetch) {
   try {
     const response = await send('https://api.resend.com/emails', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${env.RESEND_API_KEY.trim()}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: env.WRAPPED_EMAIL_FROM, to: [email], subject: `Your ${year} year on the mat`,
+        from: env.WRAPPED_EMAIL_FROM.trim(), to: [email], subject: `Your ${year} year on the mat`,
         text: `Your ${year} MatMetrics Wrapped is here!\n\nThese are the highlights of your training: the time you put in, how you trained, and your standout moments.\n\n${summaryText(year, summary)}\n\nTHE WORK YOU PUT IN\nYour sessions, training days, and mat time.\n\nHOW YOU TRAINED\nYour training styles, busiest month, weekly rhythm, and streak.\n\nYOUR TRAINING HIGHLIGHTS\nYour go-to class, coaches, and biggest training day.\n\nAll nine recap cards are attached as PNG images to save and share.\n\nKeep showing up. See you on the mat.\n\nYou received this one-time email because someone requested a training recap at MatMetrics.`,
         html: emailHtml(year, summary),
         attachments: [
@@ -91,9 +104,19 @@ export async function handleEmail(request, env, send = fetch) {
       }),
       signal: AbortSignal.timeout(30_000),
     })
-    if (!response.ok) return json({ error: 'The email service could not send your recap. Please try again later.' }, 502)
+    if (!response.ok) {
+      const detail = await response.json().catch(() => null)
+      const failure = providerFailure(response.status, detail)
+      // Log diagnostic categories, never keys, recipient addresses, or image payloads.
+      console.error('Wrapped email provider rejected request', { providerStatus: response.status, code: failure.code })
+      return json({ error: failure.error, code: failure.code }, failure.status)
+    }
     return json({ success: true })
-  } catch { return json({ error: 'The email service is unavailable. Please try again later.' }, 502) }
+  } catch (error) {
+    const timeout = error?.name === 'TimeoutError' || error?.name === 'AbortError'
+    console.error('Wrapped email provider connection failed', { code: timeout ? 'email_timeout' : 'email_connection' })
+    return json({ error: timeout ? 'Email delivery timed out. Check Resend’s email history before retrying to avoid duplicates.' : 'Could not connect to the email service from the server. Please try again later.', code: timeout ? 'email_timeout' : 'email_connection' }, timeout ? 504 : 502)
+  }
 }
 
 export default {

@@ -22,6 +22,7 @@ import { AnimatedArea as Area, AnimatedBar as Bar, AnimatedLine as Line, Animate
 import { allocateTrainingStyles } from './lib/allocateTrainingStyles'
 import { parseSession } from './lib/sessionParser'
 import InstructionsPage from './InstructionsPage'
+import PitchPage from './PitchPage'
 import { useTrainingWorkspace } from './lib/useTrainingWorkspace'
 import { useAccount } from './components/AccountContext'
 import AccountModal from './components/AccountModal'
@@ -95,9 +96,10 @@ const formatDuration = (minutes: number) => {
 
 const shortDate = (date: Date) => new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(date)
 const COLORS = ['#dc2626', '#52525b', '#d97706']
-type Page = 'wrapped' | 'log' | 'overview' | 'sessions' | 'dev' | 'instructions'
+type Page = 'wrapped' | 'log' | 'overview' | 'sessions' | 'dev' | 'instructions' | 'pitch'
 
 function pageFromPath(): Page {
+  if (window.location.pathname.replace(/\/+$/, '') === '/pitch') return 'pitch'
   if (window.location.pathname === '/wrapped') return 'wrapped'
   if (window.location.pathname === '/log') return 'log'
   if (window.location.pathname === '/instructions') return 'instructions'
@@ -285,6 +287,8 @@ function App() {
     link.click()
     URL.revokeObjectURL(link.href)
   }
+
+  if (activePage === 'pitch') return <PitchPage onExplore={() => goToPage('overview')} onLog={() => goToPage('log')} />
 
   return (
     <div className="app-shell" onDragOver={(event) => { event.preventDefault(); setDragging(true) }} onDragLeave={(event) => { if (event.currentTarget === event.target) setDragging(false) }} onDrop={onDrop}>

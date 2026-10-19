@@ -87,3 +87,24 @@ test('non-API requests continue to the static app', async () => {
   const response = await worker.fetch(new Request(`${origin}/wrapped`), { ASSETS: { fetch: async () => new Response('app') } })
   assert.equal(await response.text(), 'app')
 })
+
+test('distinguishes production credentials, test-sender restrictions, domain setup, and size failures', async () => {
+  for (const [status, message, expectedCode, expectedStatus] of [
+    [401, 'API key is invalid', 'email_credentials', 503],
+    [403, 'You can only send testing emails to your own email address', 'email_test_sender', 503],
+    [403, 'The example.com domain is not verified', 'email_sender_domain', 503],
+    [413, 'Request too large', 'email_size', 413],
+    [429, 'Too many requests', 'email_provider_limit', 429],
+    [422, 'Invalid attachment', 'email_validation', 502],
+  ]) {
+    const response = await handleEmail(request(), env, async () => Response.json({ name: 'validation_error', message }, { status }))
+    assert.equal(response.status, expectedStatus)
+    assert.equal((await response.json()).code, expectedCode)
+  }
+})
+
+test('distinguishes provider connection failures from timeouts', async () => {
+  const response = await handleEmail(request(), env, async () => { throw new DOMException('timed out', 'TimeoutError') })
+  assert.equal(response.status, 504)
+  assert.equal((await response.json()).code, 'email_timeout')
+})
