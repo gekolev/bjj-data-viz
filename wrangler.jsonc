@@ -3,7 +3,11 @@
   "name": "bjj-data-viz",
   "compatibility_date": "2026-10-09",
   "keep_vars": true,
+  "main": "worker/index.mjs",
+  "ratelimits": [{ "name": "WRAPPED_EMAIL_LIMITER", "namespace_id": "76740261", "simple": { "limit": 2, "period": 60 } }],
   "assets": {
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"],
     "directory": "./dist",
     "not_found_handling": "single-page-application"
   }

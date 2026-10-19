@@ -38,3 +38,5 @@
   .wrap-coach-count span{font-size:3.3cqw}
   .wrap-day-stamp{font-size:3.6cqw}
 }
+
+.wrapped-email{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;padding:22px;margin-bottom:24px;background:#fff;border:1px solid #e4e4e7;border-radius:14px}.wrapped-email label{font-size:16px;font-weight:750;letter-spacing:-.3px}.wrapped-email p{font-size:12px;line-height:1.6;color:#71717a;margin:6px 0 0}.wrapped-email-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.wrapped-email input{width:240px;max-width:100%;min-height:44px;border:1px solid #d4d4d8;border-radius:8px;padding:10px 12px;font:inherit;background:#fafafa;color:#18181b}.wrapped-email .wrapped-email-status{flex-basis:100%;color:#8e2020;margin:0}.wrapped-email-status:empty{display:none}.wrapped-email button:disabled,.wrapped-email input:disabled{opacity:.55;cursor:wait}@media(max-width:560px){.wrapped-email{padding:18px}.wrapped-email-controls{width:100%}.wrapped-email input{width:100%;font-size:16px}.wrapped-email button{width:100%;min-height:44px}}

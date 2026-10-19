@@ -1,7 +1,7 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { ArrowUpRight, Flame, Sparkles, Download, GraduationCap, Trophy, Layers } from 'lucide-react'
 import './YearWrapped.css'
-import { exportRecap, exportRecapCard } from './lib/exportRecap'
+import { emailRecap, exportRecap, exportRecapCard } from './lib/exportRecap'
 
 type RecapSession = { date: Date; duration: number; style: string; instructor: string; classType: string; durationEstimated?: boolean; styleEstimated?: boolean }
 
@@ -43,6 +43,31 @@ export default function YearWrapped({ sessions, sample }: { sessions: RecapSessi
   const [saving, setSaving] = useState(false)
   const [exportMessage, setExportMessage] = useState('')
   const [savingCard, setSavingCard] = useState<number | null>(null)
+  const [email, setEmail] = useState('')
+  const [sendingEmail, setSendingEmail] = useState(false)
+  const [emailMessage, setEmailMessage] = useState('')
+  async function sendEmail(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!gridRef.current || saving) return
+    setSaving(true)
+    setSendingEmail(true)
+    setEmailMessage('Preparing your cards...')
+    setExportMessage('')
+    try {
+      const latest = rows.reduce((last, row) => row.date > last ? row.date : last, rows[0].date)
+      const latestTraining = `${latest.getFullYear()}-${String(latest.getMonth() + 1).padStart(2, '0')}-${String(latest.getDate()).padStart(2, '0')}`
+      await emailRecap(gridRef.current, year, email.trim(), {
+        latestTraining, sessions: rows.length, minutes, trainingDays: dates.length, sample,
+        estimated: rows.some(row => row.durationEstimated || row.styleEstimated),
+      }, (count, total) => setEmailMessage(`Preparing card ${count} of ${total}...`))
+      setEmailMessage(`Your ${year} Wrapped has been submitted for delivery to ${email.trim()}. Check your inbox and spam folder.`)
+    } catch (error) {
+      setEmailMessage(error instanceof Error ? error.message : 'Email could not be sent. Please try again.')
+    } finally {
+      setSaving(false)
+      setSendingEmail(false)
+    }
+  }
   async function downloadCard(index: number) {
     const card = gridRef.current?.querySelectorAll<HTMLElement>('.wrap-card')[index]
     if (!card || saving) return
@@ -76,6 +101,11 @@ export default function YearWrapped({ sessions, sample }: { sessions: RecapSessi
   }
 
   return <section className="wrapped" aria-label="Your annual training recap">
+    <form className="wrapped-email" onSubmit={event => void sendEmail(event)}>
+      <div><label htmlFor="wrapped-email">Your year, straight to your inbox</label><p>Send all nine cards as PNG attachments. Your email is used only to deliver this recap.</p></div>
+      <div className="wrapped-email-controls"><input id="wrapped-email" type="email" autoComplete="email" placeholder="you@example.com" required maxLength={254} value={email} onChange={event => { setEmail(event.target.value); setEmailMessage('') }} disabled={saving} /><button className="button button-primary" type="submit" disabled={!rows.length || saving}>{sendingEmail ? 'Sending cards...' : 'Email my Wrapped'}</button></div>
+      <p className="wrapped-email-status" role="status" aria-live="polite">{emailMessage}</p>
+    </form>
     <div className="wrapped-toolbar"><span><Sparkles size={15} /> YOUR YEAR. YOUR MAT. YOUR STORY.</span><div><label>Recap year <select value={year} disabled={!years.length || saving} onChange={event => { setChosenYear(Number(event.target.value)); setExportMessage('') }}>{(years.length ? years : [year]).map(value => <option key={value}>{value}</option>)}</select></label><button onClick={downloadRecap} disabled={!rows.length || saving}><Download size={15} /> {saving ? 'Saving images...' : 'Save recap'}</button></div></div>
     <p className="wrapped-note" role="status">{exportMessage || (sample ? 'A taste of your Wrapped, using sample data. Import your sessions or log training to make it yours.' : `Your ${year} training, based on all logged sessions for this calendar year.`)}</p>
     {!rows.length ? <div className="wrapped-empty"><Sparkles size={36} /><h2>Your story starts with showing up.</h2><p>Log your first session or import your training CSV to unlock your year on the mat.</p></div> : <>

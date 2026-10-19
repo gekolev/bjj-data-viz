@@ -6,7 +6,37 @@ This project is a Vite frontend served by the `bjj-data-viz` Cloudflare Worker. 
 
 Copy `.env.example` to `.env.local` and set `VITE_FIREBASE_API_KEY` to the Firebase browser key. Use `npm run dev`. The existing local configuration is preserved.
 
-Vite reads `.env.local` when building the browser app. This project does not need `.dev.vars` because it has no custom Worker code consuming runtime bindings. Environment files, `.dev.vars` files, and Wrangler state are ignored by Git; `.env.example` remains tracked.
+Vite reads `.env.local` when building the browser app. Email delivery uses Worker runtime secrets, configured below. Environment files, `.dev.vars` files, and Wrangler state are ignored by Git; `.env.example` remains tracked.
+
+## Wrapped email delivery
+
+The Wrapped email form posts nine PNG attachments to `/api/wrapped/email`. A custom Worker forwards the message to Resend. Static app routes continue to use the assets binding. No recipient addresses or card images are stored by the app; Resend processes delivery.
+
+1. Create a Resend account, verify your sending domain, and create an API key with sending permission.
+2. Set the runtime secrets (never use `VITE_` variables for these):
+
+   ```sh
+   npx wrangler secret put RESEND_API_KEY
+   npx wrangler secret put WRAPPED_EMAIL_FROM
+   ```
+
+   For `WRAPPED_EMAIL_FROM`, enter a verified sender such as `MatMetrics <wrapped@your-domain.com>`.
+3. Deploy with `npm run deploy:cloudflare`.
+
+Without both values the endpoint returns a clear configuration error. The form does not claim delivery until the provider accepts the message. Requests have a 24 MB JSON limit, exactly nine PNG attachments, same-origin checks, and rate limits of two requests per minute per source IP and recipient per Cloudflare location. The namespace `76740261` should be unique within your Cloudflare account. These limits help contain casual abuse; add stronger bot protection before promoting an anonymous public email campaign.
+
+For local development, create an ignored `.dev.vars` in the project root:
+
+```dotenv
+RESEND_API_KEY=re_your_actual_key
+WRAPPED_EMAIL_FROM="MatMetrics <wrapped@your-verified-domain.com>"
+```
+
+Restart `npm run dev` after setting these values. Vite runs the production email handler locally in the same process; there is no proxy or separate backend to start. The local limiter uses in-memory counters, while production uses the Cloudflare binding. Local email submits real messages to Resend when configured. Without credentials the form explains that email sending is not configured. You can also build and run `npm run preview:cloudflare` to test the full Worker locally.
+
+Run the endpoint tests with `node --test tests/wrappedEmail.test.mjs`. Tests mock the provider and send no real email.
+
+API references: [Resend attachments](https://resend.com/docs/send-with-attachments), [Cloudflare rate limiting](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/).
 
 ## Deploy with Wrangler
 

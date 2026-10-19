@@ -57,6 +57,12 @@ function cardFilename(card: HTMLElement, year: number, index: number) {
 }
 
 export async function exportRecap(grid: HTMLElement, year: number, onProgress: (count: number, total: number) => void) {
+  const files = await recapImages(grid, year, onProgress)
+  const archive = zipSync(files, { level: 0 })
+  downloadBlob(new Blob([new Uint8Array(archive)], { type: 'application/zip' }), `my-training-wrapped-${year}.zip`)
+}
+
+async function recapImages(grid: HTMLElement, year: number, onProgress: (count: number, total: number) => void) {
   await document.fonts.ready
   const cards = [...grid.querySelectorAll<HTMLElement>('.wrap-card')]
   if (!cards.length) throw new Error('No recap cards are available.')
@@ -65,6 +71,31 @@ export async function exportRecap(grid: HTMLElement, year: number, onProgress: (
     files[cardFilename(card, year, index)] = await cardPng(card)
     onProgress(index + 1, cards.length)
   }
-  const archive = zipSync(files, { level: 0 })
-  downloadBlob(new Blob([new Uint8Array(archive)], { type: 'application/zip' }), `my-training-wrapped-${year}.zip`)
+  return files
+}
+
+export type RecapEmailSummary = { latestTraining: string; sessions: number; minutes: number; trainingDays: number; sample: boolean; estimated: boolean }
+
+export async function emailRecap(grid: HTMLElement, year: number, email: string, summary: RecapEmailSummary, onProgress: (count: number, total: number) => void) {
+  const files = await recapImages(grid, year, onProgress)
+  const attachments = Object.entries(files).map(([filename, bytes]) => {
+    let binary = ''
+    for (let offset = 0; offset < bytes.length; offset += 8192) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192))
+    }
+    return { filename, content: btoa(binary) }
+  })
+  const body = JSON.stringify({ email, year, summary, attachments })
+  if (new Blob([body]).size > 24_000_000) throw new Error('These images are too large to email. Please download the ZIP instead.')
+  let response: Response
+  try {
+    response = await fetch('/api/wrapped/email', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
+      signal: AbortSignal.timeout(60_000),
+    })
+  } catch {
+    throw new Error('Could not reach the email service. Check that the app server is running, then try again.')
+  }
+  const result = await response.json().catch(() => null)
+  if (!response.ok || !result?.success) throw new Error(result?.error || 'Email could not be sent. Please try again later.')
 }

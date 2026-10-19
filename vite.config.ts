@@ -1,6 +1,7 @@
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
+import { wrappedEmailDev } from './scripts/wrappedEmailDev.js'
 
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
@@ -10,5 +11,5 @@ export default defineConfig(({ command, mode }) => {
       throw new Error('Set VITE_FIREBASE_API_KEY in .env.local or Cloudflare build variables before building. Worker runtime secrets are not frontend build variables.')
     }
   }
-  return { plugins: [react()] }
+  return { plugins: [react(), wrappedEmailDev()] }
 })
