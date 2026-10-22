@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
 import Papa from 'papaparse'
+import demoCsv from '../demodata/gymdesk-all-attendance-2026-10-03.csv?raw'
+import type { CsvImport } from './lib/importStorage'
 import {
   Activity, ArrowDownToLine, ArrowUpRight, Box, CalendarDays,
   ChevronDown, ChevronRight, CircleHelp, Clock3, Dumbbell,
@@ -134,15 +136,18 @@ function App() {
   const workspace = useTrainingWorkspace()
   const { user } = useAccount()
   const [accountOpen, setAccountOpen] = useState(false)
-  const { csvImport, manualData, updateManual, deleteManual, importCsv, removeImport } = workspace
+  const { csvImport: savedCsvImport, manualData, updateManual, deleteManual, importCsv, removeImport } = workspace
+  const [demoImport, setDemoImport] = useState<CsvImport | null>(null)
+  const demoEnabled = !user && demoImport !== null
+  const csvImport = demoEnabled ? demoImport : savedCsvImport
   const savedLocally = true
   const storageMessage = workspace.error
   const rankHistory = useMemo(() => normalizeRankHistory(csvImport?.ranks ?? []), [csvImport])
   const manualSessions = manualData.sessions
   const sourceSessions = useMemo(() => {
     const imported = csvImport?.sessions ?? (manualData.initialized ? [] : initialSessions)
-    return [...imported, ...manualSessions].map((row, id) => ({ ...row, id }))
-  }, [csvImport, manualSessions, manualData.initialized])
+    return [...imported, ...(demoEnabled ? [] : manualSessions)].map((row, id) => ({ ...row, id }))
+  }, [csvImport, manualSessions, manualData.initialized, demoEnabled])
   const allocation = useMemo(() => allocateTrainingStyles(sourceSessions), [sourceSessions])
   const sessions = allocation.sessions
   const [activePage, setActivePage] = useState<Page>(pageFromPath)
@@ -239,6 +244,22 @@ function App() {
     { name: 'Other', value: filteredSessions.filter((session) => session.style === 'Other').length },
   ].filter((slice) => slice.value > 0)
 
+  const toggleDemo = () => {
+    if (user) return
+    if (demoEnabled) {
+      setDemoImport(null)
+      setUploadMessage('Demo data turned off. Your training data has been restored.')
+      return
+    }
+    sessionsFromCsv(new File([demoCsv], 'gymdesk-all-attendance-2026-10-03.csv', { type: 'text/csv' }), (rows, error, ranks = []) => {
+      if (error) { setUploadMessage(error); return }
+      setDemoImport({ fileName: 'Demo data', sessions: rows, ranks })
+      setQuery(''); setStyleFilter('All styles'); setPeriod('All time')
+      if (rows.length) setAnnualYear(Math.max(...rows.map(row => row.date.getFullYear())))
+      setUploadMessage('Showing demo data. Turn off Demo data to return to your training.')
+    })
+  }
+
   const handleFiles = (files: FileList | null) => {
     const file = files?.[0]
     if (!file || workspace.busy || !workspace.ready) return
@@ -255,6 +276,7 @@ function App() {
         const nextImport = { fileName: file.name, sessions: rows, ranks }
         if (!await importCsv(nextImport)) { setUploadMessage('CSV could not be saved. Please try again.'); return }
         if (request !== importRequest.current) return
+        setDemoImport(null)
         if (rows.length) setAnnualYear(Math.max(...rows.map((row) => row.date.getFullYear())))
         setUploadMessage(`${rows.length} sessions and ${ranks.length} rank records imported from ${file.name}${skippedRanks ? ` (${skippedRanks} rank records skipped: missing rank or invalid date)` : ''}`)
       }
@@ -310,7 +332,7 @@ function App() {
       </aside>
 
       <main className="main-area">
-        <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><strong>{activePage === 'wrapped' ? 'Year Wrapped' : activePage === 'log' ? 'Log training' : activePage === 'overview' ? 'Overview' : activePage === 'sessions' ? 'Sessions' : activePage === 'instructions' ? 'Get your CSV' : '3D Data Lab'}</strong></div><div className="top-actions">{csvImport && <div className="current-csv" title={`${csvImport.fileName} — ${workspace.cloud ? 'Saved to your account' : savedLocally ? 'Saved only in this browser' : 'Session only'}`}><FileSpreadsheet size={15} /><span className="current-csv-name">{csvImport.fileName}</span>{!user && <button className="current-csv-remove" aria-label={`Remove ${csvImport.fileName} and delete its saved data`} title="Remove CSV and delete saved data" disabled={!workspace.ready || workspace.busy} onClick={() => void removeFile()}><X size={14} /></button>}</div>}<button className="screen-toggle" aria-pressed={fillScreen} title="Expand the layout and scale the interface to fit your screen" onClick={() => setFillScreen((enabled) => !enabled)}><Maximize2 size={15} /><span>Fill screen</span><span className="screen-toggle-track" aria-hidden="true"><span /></span></button><span className="sync-status"><span className="status-dot" /> {workspace.cloud ? workspace.status : csvImport || manualData.initialized ? 'Saved in this browser' : 'Sample data'}</span><button className="icon-button" aria-label="CSV export instructions" onClick={() => goToPage('instructions')}><CircleHelp size={17} /></button><button className="top-avatar account-avatar-button" aria-label="Open profile" onClick={() => setAccountOpen(true)}>{(user?.displayName || 'B').slice(0, 1).toUpperCase()}</button></div></header>
+        <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><strong>{activePage === 'wrapped' ? 'Year Wrapped' : activePage === 'log' ? 'Log training' : activePage === 'overview' ? 'Overview' : activePage === 'sessions' ? 'Sessions' : activePage === 'instructions' ? 'Get your CSV' : '3D Data Lab'}</strong></div><div className="top-actions">{csvImport && <div className="current-csv" title={`${csvImport.fileName} — ${demoEnabled ? 'Demo preview' : workspace.cloud ? 'Saved to your account' : savedLocally ? 'Saved only in this browser' : 'Session only'}`}><FileSpreadsheet size={15} /><span className="current-csv-name">{csvImport.fileName}</span>{!user && !demoEnabled && <button className="current-csv-remove" aria-label={`Remove ${csvImport.fileName} and delete its saved data`} title="Remove CSV and delete saved data" disabled={!workspace.ready || workspace.busy} onClick={() => void removeFile()}><X size={14} /></button>}</div>}<button className="screen-toggle" aria-pressed={fillScreen} title="Expand the layout and scale the interface to fit your screen" onClick={() => setFillScreen((enabled) => !enabled)}><Maximize2 size={15} /><span>Fill screen</span><span className="screen-toggle-track" aria-hidden="true"><span /></span></button>{!user && <button className="screen-toggle demo-toggle" aria-pressed={demoEnabled} title="Preview the demo CSV without changing your saved training" onClick={toggleDemo}><FileSpreadsheet size={15} /><span>Demo data</span><span className="screen-toggle-track" aria-hidden="true"><span /></span></button>}<span className="sync-status"><span className="status-dot" /> {demoEnabled ? 'Demo data' : workspace.cloud ? workspace.status : csvImport || manualData.initialized ? 'Saved in this browser' : 'Sample data'}</span><button className="icon-button" aria-label="CSV export instructions" onClick={() => goToPage('instructions')}><CircleHelp size={17} /></button><button className="top-avatar account-avatar-button" aria-label="Open profile" onClick={() => setAccountOpen(true)}>{(user?.displayName || 'B').slice(0, 1).toUpperCase()}</button></div></header>
         <div className="content">
           {user && !user.emailVerified && <div className="account-banner"><p>Verify your email to save training to your account. You’re currently using this browser’s guest data.</p><button className="button button-outline" onClick={() => setAccountOpen(true)}>Verify email</button></div>}
           {workspace.cloud && workspace.hasGuestData && <div className="account-banner"><p>This browser has guest training data. Import it into your account? Existing account records will be kept.</p><button className="button button-primary" disabled={!workspace.ready || workspace.busy} onClick={() => void workspace.importGuest()}>Import browser data</button><button className="button button-outline" disabled={workspace.busy} onClick={workspace.dismissGuest}>Not now</button></div>}

@@ -1,4 +1,5 @@
 import { zipSync } from 'fflate'
+import { finishWrappedAnimation } from './wrappedAnimation'
 
 // Freeze the rendered styles so the downloaded cards match the visible layout.
 function snapshot(element: Element): Element {
@@ -13,6 +14,7 @@ function snapshot(element: Element): Element {
 }
 
 async function cardPng(card: HTMLElement): Promise<Uint8Array> {
+  finishWrappedAnimation(card)
   const width = card.offsetWidth
   const height = card.offsetHeight
   const clone = snapshot(card)
