@@ -4,7 +4,7 @@ import demoCsv from '../demodata/gymdesk-all-attendance-2026-10-03.csv?raw'
 import type { CsvImport } from './lib/importStorage'
 import {
   Activity, ArrowDownToLine, ArrowUpRight, Box, CalendarDays,
-  ChevronDown, ChevronRight, CircleHelp, Clock3, Dumbbell,
+  ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clock3, Dumbbell,
   FileSpreadsheet, Filter, Flame, MapPin, MoreHorizontal, Search, Sparkles,
   Upload, Users, X, Maximize2, BookOpen,
 } from 'lucide-react'
@@ -48,18 +48,6 @@ type Session = {
   instructor: string
 }
 
-const demoRows = [
-  ['Fundamentals - NoGi - Hladilnika BJJ | Ivan Dimitrov (I degree Black Belt)', 'Oct 1, 2026 5:42 PM 1h 10m'],
-  ['Advanced - Gi - Hladilnika BJJ | Vladimir Dzharkalov (II degree Black Belt)', 'Sep 30, 2026 5:46 PM 1h 20m'],
-  ['Fundamentals - NoGi - Hladilnika BJJ | Ivan Dimitrov (I degree Black Belt)', 'Sep 29, 2026 5:41 PM 1h 10m'],
-  ['Fundamentals - Gi - Hladilnika BJJ | Alexander Dimitrov (I degree Black Belt)', 'Sep 28, 2026 7:19 AM 1h'],
-]
-
-const initialSessions: Session[] = demoRows.map(([training, dateText], index) => {
-  const parsed = parseSession(training, dateText, index)
-  return parsed!
-})
-
 function sessionsFromCsv(file: File, onDone: (sessions: Session[], error?: string, ranks?: RankPromotion[], skippedRanks?: number) => void) {
   Papa.parse<Record<string, string>>(file, {
     header: true,
@@ -98,10 +86,10 @@ const formatDuration = (minutes: number) => {
 
 const shortDate = (date: Date) => new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(date)
 const COLORS = ['#dc2626', '#52525b', '#d97706']
-type Page = 'wrapped' | 'log' | 'overview' | 'sessions' | 'dev' | 'instructions' | 'pitch'
+type Page = 'wrapped' | 'log' | 'overview' | 'sessions' | 'dev' | 'instructions' | 'welcome'
 
 function pageFromPath(): Page {
-  if (window.location.pathname.replace(/\/+$/, '') === '/pitch') return 'pitch'
+  if (window.location.pathname.replace(/\/+$/, '') === '/welcome') return 'welcome'
   if (window.location.pathname === '/wrapped') return 'wrapped'
   if (window.location.pathname === '/log') return 'log'
   if (window.location.pathname === '/instructions') return 'instructions'
@@ -111,6 +99,7 @@ function pageFromPath(): Page {
 }
 
 function App() {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [fillScreen, setFillScreen] = useState(() => {
     try { return localStorage.getItem('matmetrics-fill-screen') === 'true' }
     catch { return false }
@@ -145,9 +134,9 @@ function App() {
   const rankHistory = useMemo(() => normalizeRankHistory(csvImport?.ranks ?? []), [csvImport])
   const manualSessions = manualData.sessions
   const sourceSessions = useMemo(() => {
-    const imported = csvImport?.sessions ?? (manualData.initialized ? [] : initialSessions)
+    const imported = csvImport?.sessions ?? []
     return [...imported, ...(demoEnabled ? [] : manualSessions)].map((row, id) => ({ ...row, id }))
-  }, [csvImport, manualSessions, manualData.initialized, demoEnabled])
+  }, [csvImport, manualSessions, demoEnabled])
   const allocation = useMemo(() => allocateTrainingStyles(sourceSessions), [sourceSessions])
   const sessions = allocation.sessions
   const [activePage, setActivePage] = useState<Page>(pageFromPath)
@@ -291,7 +280,7 @@ function App() {
     if (user || workspace.busy || !workspace.ready) return
     if (!await removeImport()) return
     importRequest.current++
-    setUploadMessage('CSV removed from this browser. ' + (manualData.initialized ? 'Your manual log is still available.' : 'Showing sample data.'))
+    setUploadMessage('CSV removed from this browser. ' + (manualSessions.length ? 'Your manual log is still available.' : 'Import a CSV, log training, or turn on Demo data to get started.'))
     setQuery(''); setStyleFilter('All styles'); setPeriod('All time')
     if (fileRef.current) fileRef.current.value = ''
   }
@@ -310,12 +299,22 @@ function App() {
     URL.revokeObjectURL(link.href)
   }
 
-  if (activePage === 'pitch') return <PitchPage onExplore={() => goToPage('overview')} onLog={() => goToPage('log')} />
+  if (activePage === 'welcome') return <PitchPage onExplore={() => goToPage('overview')} onLog={() => goToPage('log')} />
 
   return (
-    <div className="app-shell" onDragOver={(event) => { event.preventDefault(); setDragging(true) }} onDragLeave={(event) => { if (event.currentTarget === event.target) setDragging(false) }} onDrop={onDrop}>
+    <div className={`app-shell${sidebarCollapsed ? ' sidebar-collapsed' : ''}`} onDragOver={(event) => { event.preventDefault(); setDragging(true) }} onDragLeave={(event) => { if (event.currentTarget === event.target) setDragging(false) }} onDrop={onDrop}>
       {dragging && <div className="drop-overlay"><div className="drop-message"><Upload size={28} /><strong>Drop your CSV to import</strong><span>We’ll update your training dashboard</span></div></div>}
-      <aside className="sidebar">
+      <button
+        className="sidebar-toggle"
+        aria-label={sidebarCollapsed ? 'Show navigation' : 'Hide navigation'}
+        title={sidebarCollapsed ? 'Show navigation' : 'Hide navigation'}
+        aria-expanded={!sidebarCollapsed}
+        aria-controls="workspace-sidebar"
+        onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+      >
+        {sidebarCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+      </button>
+      <aside className="sidebar" id="workspace-sidebar">
         <div className="brand"><div className="brand-mark"><Activity size={19} strokeWidth={2.5} /></div><span>mat<span className="brand-light">metrics</span></span></div>
         <div className="workspace-label">WORKSPACE</div>
         <button className={`nav-item ${activePage === 'overview' ? 'active' : ''}`} onClick={() => goToPage('overview')}><Activity size={17} /> Overview</button>
@@ -332,7 +331,7 @@ function App() {
       </aside>
 
       <main className="main-area">
-        <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><strong>{activePage === 'wrapped' ? 'Year Wrapped' : activePage === 'log' ? 'Log training' : activePage === 'overview' ? 'Overview' : activePage === 'sessions' ? 'Sessions' : activePage === 'instructions' ? 'Get your CSV' : '3D Data Lab'}</strong></div><div className="top-actions">{csvImport && <div className="current-csv" title={`${csvImport.fileName} — ${demoEnabled ? 'Demo preview' : workspace.cloud ? 'Saved to your account' : savedLocally ? 'Saved only in this browser' : 'Session only'}`}><FileSpreadsheet size={15} /><span className="current-csv-name">{csvImport.fileName}</span>{!user && !demoEnabled && <button className="current-csv-remove" aria-label={`Remove ${csvImport.fileName} and delete its saved data`} title="Remove CSV and delete saved data" disabled={!workspace.ready || workspace.busy} onClick={() => void removeFile()}><X size={14} /></button>}</div>}<button className="screen-toggle" aria-pressed={fillScreen} title="Expand the layout and scale the interface to fit your screen" onClick={() => setFillScreen((enabled) => !enabled)}><Maximize2 size={15} /><span>Fill screen</span><span className="screen-toggle-track" aria-hidden="true"><span /></span></button>{!user && <button className="screen-toggle demo-toggle" aria-pressed={demoEnabled} title="Preview the demo CSV without changing your saved training" onClick={toggleDemo}><FileSpreadsheet size={15} /><span>Demo data</span><span className="screen-toggle-track" aria-hidden="true"><span /></span></button>}<span className="sync-status"><span className="status-dot" /> {demoEnabled ? 'Demo data' : workspace.cloud ? workspace.status : csvImport || manualData.initialized ? 'Saved in this browser' : 'Sample data'}</span><button className="icon-button" aria-label="CSV export instructions" onClick={() => goToPage('instructions')}><CircleHelp size={17} /></button><button className="top-avatar account-avatar-button" aria-label="Open profile" onClick={() => setAccountOpen(true)}>{(user?.displayName || 'B').slice(0, 1).toUpperCase()}</button></div></header>
+        <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><strong>{activePage === 'wrapped' ? 'Year Wrapped' : activePage === 'log' ? 'Log training' : activePage === 'overview' ? 'Overview' : activePage === 'sessions' ? 'Sessions' : activePage === 'instructions' ? 'Get your CSV' : '3D Data Lab'}</strong></div><div className="top-actions">{csvImport && <div className="current-csv" title={`${csvImport.fileName} — ${demoEnabled ? 'Demo preview' : workspace.cloud ? 'Saved to your account' : savedLocally ? 'Saved only in this browser' : 'Session only'}`}><FileSpreadsheet size={15} /><span className="current-csv-name">{csvImport.fileName}</span>{!user && !demoEnabled && <button className="current-csv-remove" aria-label={`Remove ${csvImport.fileName} and delete its saved data`} title="Remove CSV and delete saved data" disabled={!workspace.ready || workspace.busy} onClick={() => void removeFile()}><X size={14} /></button>}</div>}<button className="screen-toggle" aria-pressed={fillScreen} title="Expand the layout and scale the interface to fit your screen" onClick={() => setFillScreen((enabled) => !enabled)}><Maximize2 size={15} /><span>Fill screen</span><span className="screen-toggle-track" aria-hidden="true"><span /></span></button>{!user && <button className="screen-toggle demo-toggle" aria-pressed={demoEnabled} title="Preview the demo CSV without changing your saved training" onClick={toggleDemo}><FileSpreadsheet size={15} /><span>Demo data</span><span className="screen-toggle-track" aria-hidden="true"><span /></span></button>}<span className="sync-status"><span className="status-dot" /> {demoEnabled ? 'Demo data' : workspace.cloud ? workspace.status : csvImport || manualData.initialized ? 'Saved in this browser' : 'No training data'}</span><button className="icon-button" aria-label="CSV export instructions" onClick={() => goToPage('instructions')}><CircleHelp size={17} /></button><button className="top-avatar account-avatar-button" aria-label="Open profile" onClick={() => setAccountOpen(true)}>{(user?.displayName || 'B').slice(0, 1).toUpperCase()}</button></div></header>
         <div className="content">
           {user && !user.emailVerified && <div className="account-banner"><p>Verify your email to save training to your account. You’re currently using this browser’s guest data.</p><button className="button button-outline" onClick={() => setAccountOpen(true)}>Verify email</button></div>}
           {workspace.cloud && workspace.hasGuestData && <div className="account-banner"><p>This browser has guest training data. Import it into your account? Existing account records will be kept.</p><button className="button button-primary" disabled={!workspace.ready || workspace.busy} onClick={() => void workspace.importGuest()}>Import browser data</button><button className="button button-outline" disabled={workspace.busy} onClick={workspace.dismissGuest}>Not now</button></div>}
@@ -348,7 +347,7 @@ function App() {
           {storageMessage && <div className="storage-message" role="alert">{storageMessage}</div>}
           {(allocation.estimatedCount > 0 || allocation.unknownCount > 0) && <div className="style-estimate-note" role="status">{allocation.estimatedCount > 0 ? `${allocation.estimatedCount} unclassified sessions distributed proportionally using the known Gi / No-Gi split (${Math.round((allocation.giShare ?? 0) * 100)}% / ${Math.round((1 - (allocation.giShare ?? 0)) * 100)}%). Estimated styles are included throughout the dashboard.` : `${allocation.unknownCount} sessions remain unclassified: no known Gi or No-Gi records are available to calculate a ratio.`}</div>}
           <div inert={!workspace.ready || workspace.busy}>
-          {activePage === 'wrapped' ? <YearWrapped sessions={sessions} sample={!csvImport && !manualData.initialized} /> : activePage === 'log' ? <ManualLog key={user?.uid ?? 'guest'} sessions={manualSessions} error={manualData.error} cloud={workspace.cloud} onSave={row => updateManual([...manualSessions.filter(item => row.cloudId ? item.cloudId !== row.cloudId : item.id !== row.id), row])} onDelete={deleteManual} /> : activePage === 'instructions' ? <InstructionsPage /> : activePage === 'dev' ? <DevPage sessions={sessions} ranks={rankHistory} /> : activePage === 'overview' ? <>
+          {activePage === 'wrapped' ? <YearWrapped sessions={sessions} sample={demoEnabled} /> : activePage === 'log' ? <ManualLog key={user?.uid ?? 'guest'} sessions={manualSessions} error={manualData.error} cloud={workspace.cloud} onSave={row => updateManual([...manualSessions.filter(item => row.cloudId ? item.cloudId !== row.cloudId : item.id !== row.id), row])} onDelete={deleteManual} /> : activePage === 'instructions' ? <InstructionsPage /> : activePage === 'dev' ? <DevPage sessions={sessions} ranks={rankHistory} /> : activePage === 'overview' ? <>
             <div className="section-toolbar"><div className="section-title"><span className="live-dot" /> AT A GLANCE</div><div className="toolbar-controls"><span className="updated-label">Based on {filteredSessions.length} sessions</span><label className="select-wrap"><CalendarDays size={14} /><select value={period} onChange={(event) => setPeriod(event.target.value)}><option>All time</option><option>12 months</option><option>90 days</option><option>30 days</option><option>This year</option></select><ChevronDown size={13} /></label></div></div>
 
             <div className="stats-grid">
@@ -380,7 +379,7 @@ function App() {
 
             <section className="panel sessions-panel">
               <div className="panel-heading sessions-heading"><div><h2>Recent sessions</h2><p>A record of time well spent</p></div><button className="button button-ghost" onClick={() => goToPage('sessions')}>View all <ArrowUpRight size={14} /></button></div><div className="table-tools"><label className="search-field"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sessions..." /></label><label className="filter-select"><Filter size={14} /><select value={styleFilter} onChange={(event) => setStyleFilter(event.target.value)}><option>All styles</option><option>Gi</option><option>NoGi</option></select><ChevronDown size={13} /></label></div><SessionTable sessions={filteredSessions.slice(0, 5)} /><div className="table-footer"><span>Showing {Math.min(filteredSessions.length, 5)} of {filteredSessions.length} sessions</span><button onClick={() => goToPage('sessions')}>See all sessions <ArrowUpRight size={13} /></button></div></section>
-          </> : <SessionBrowser key={csvImport?.fileName ?? 'sample'} sessions={sessions} initialQuery={query} initialStyle={styleFilter} renderTable={rows => <SessionTable sessions={rows} />} />}
+          </> : <SessionBrowser key={csvImport?.fileName ?? 'empty'} sessions={sessions} initialQuery={query} initialStyle={styleFilter} renderTable={rows => <SessionTable sessions={rows} />} />}
           </div>
         </div>
       </main>
@@ -401,7 +400,7 @@ function App() {
 
 function SessionTable({ sessions }: { sessions: Session[] }) {
   if (!sessions.length) return <div className="empty-table"><Search size={20} /><strong>No sessions match those filters</strong><span>Try a different search or import a CSV with training data.</span></div>
-  return <div className="table-scroll"><table><thead><tr><th>CLASS</th><th>INSTRUCTOR</th><th>DATE</th><th>DURATION</th><th>STYLE</th><th aria-label="Actions" /></tr></thead><tbody>{sessions.map((session) => <tr key={session.id}><td><div className="class-cell"><div className={`class-avatar ${session.style === 'Gi' ? 'gi-avatar' : session.style === 'NoGi' ? 'nogi-avatar' : ''}`}>{session.style === 'Gi' ? 'G' : session.style === 'NoGi' ? 'N' : 'T'}</div><div><strong>{session.classType}</strong><span>{session.venue}</span></div></div></td><td className="instructor-cell">{session.instructor}</td><td><span className="date-main">{shortDate(session.date)}, {session.date.getFullYear()}</span><span className="date-time">{new Intl.DateTimeFormat('en', { hour: 'numeric', minute: '2-digit' }).format(session.date)}</span></td><td><span className="duration-pill"><Clock3 size={12} />{formatDuration(session.duration)}</span></td><td><span className={`style-badge ${session.style.toLowerCase()}`} title={session.styleEstimated ? 'Estimated from the known Gi / No-Gi ratio' : undefined}>{session.style === 'NoGi' ? 'No-Gi' : session.style}{session.styleEstimated && ' (est.)'}</span></td><td><button className="subtle-icon row-action" aria-label="Session details"><MoreHorizontal size={17} /></button></td></tr>)}</tbody></table></div>
+  return <div className="table-scroll"><table><thead><tr><th>CLASS</th><th>INSTRUCTOR</th><th>DATE</th><th>DURATION</th><th>STYLE</th></tr></thead><tbody>{sessions.map((session) => <tr key={session.id}><td><div className="class-cell"><div className={`class-avatar ${session.style === 'Gi' ? 'gi-avatar' : session.style === 'NoGi' ? 'nogi-avatar' : ''}`}>{session.style === 'Gi' ? 'G' : session.style === 'NoGi' ? 'N' : 'T'}</div><div><strong>{session.classType}</strong><span>{session.venue}</span></div></div></td><td className="instructor-cell">{session.instructor}</td><td><span className="date-main">{shortDate(session.date)}, {session.date.getFullYear()}</span><span className="date-time">{new Intl.DateTimeFormat('en', { hour: 'numeric', minute: '2-digit' }).format(session.date)}</span></td><td><span className="duration-pill"><Clock3 size={12} />{formatDuration(session.duration)}</span></td><td><span className={`style-badge ${session.style.toLowerCase()}`} title={session.styleEstimated ? 'Estimated from the known Gi / No-Gi ratio' : undefined}>{session.style === 'NoGi' ? 'No-Gi' : session.style}{session.styleEstimated && ' (est.)'}</span></td></tr>)}</tbody></table></div>
 }
 
 function YearHistoryChart({ data }: { data: { year: string; sessions: number; hours: number }[] }) {
