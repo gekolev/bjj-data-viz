@@ -11,6 +11,45 @@ export function sessionHasRecordedTime(session: Pick<JourneySession, 'date' | 't
   return session.date.getHours() !== 0 || session.date.getMinutes() !== 0 || session.date.getSeconds() !== 0 || session.date.getMilliseconds() !== 0
 }
 
+const classStartTimes = [
+  { minutes: 450, label: '07:30' },
+  { minutes: 540, label: '09:00' },
+  { minutes: 720, label: '12:00' },
+  { minutes: 1080, label: '18:00' },
+  { minutes: 1150, label: '19:10' },
+] as const
+
+function nearestClassStart(date: Date) {
+  const minutes = date.getHours() * 60 + date.getMinutes()
+  // Prefer the upcoming class if a check-in is equally close to two starts.
+  return classStartTimes.reduce((best, slot) =>
+    Math.abs(slot.minutes - minutes) <= Math.abs(best.minutes - minutes) ? slot : best)
+}
+
+/** Signed mean: negative means early, positive means late; unknown times are excluded. */
+export function buildArrivalSummary(sessions: Pick<JourneySession, 'date' | 'timeRecorded'>[]) {
+  let totalMinutes = 0, recorded = 0
+  sessions.forEach(session => {
+    if (!sessionHasRecordedTime(session)) return
+    const start = nearestClassStart(session.date)
+    totalMinutes += session.date.getHours() * 60 + session.date.getMinutes() - start.minutes
+    recorded++
+  })
+  return { averageMinutes: recorded ? totalMinutes / recorded : null, recorded, unknown: sessions.length - recorded }
+}
+
+/** Map local check-in timestamps to the nearest supplied class start time. */
+export function buildTrainingTimeDistribution(sessions: Pick<JourneySession, 'date' | 'timeRecorded'>[]) {
+  const bins = classStartTimes.map(slot => ({ label: slot.label, sessions: 0 }))
+  let unknown = 0
+  sessions.forEach(session => {
+    if (!sessionHasRecordedTime(session)) { unknown++; return }
+    const nearest = classStartTimes.indexOf(nearestClassStart(session.date))
+    bins[nearest].sessions++
+  })
+  return { bins, unknown, recorded: sessions.length - unknown }
+}
+
 /** Calendar months use the same local dates as the imported attendance records. */
 export function buildTrainingJourney(sessions: JourneySession[], ranks: RankPromotion[], metric: 'hours' | 'sessions') {
   const dates = [...sessions.map(session => session.date), ...ranks.map(rank => rank.date)].sort((a, b) => a.getTime() - b.getTime())

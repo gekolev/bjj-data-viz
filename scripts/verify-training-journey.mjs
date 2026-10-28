@@ -26,12 +26,50 @@ function load(relative) {
   return module.exports
 }
 const { parseSession } = load('src/lib/sessionParser.ts')
-const { buildTrainingJourney, sessionHasRecordedTime } = load('src/lib/trainingJourney.ts')
+const { buildTrainingJourney, sessionHasRecordedTime, buildTrainingTimeDistribution, buildArrivalSummary } = load('src/lib/trainingJourney.ts')
 const { allocateTrainingStyles } = load('src/lib/allocateTrainingStyles.ts')
 const { ranksFromCsvRows, parseRankDate } = load('src/lib/rankHistory.ts')
 const { saveCsvImport, loadCsvImport } = load('src/lib/importStorage.ts')
 const session = (style, date, duration, id = 0) => parseSession(`Fundamentals - ${style} - Academy | Coach (Black Belt)`, date, id, duration)
 const rank = (date, id = 0) => ({ id, date: parseRankDate(date), rank: 'B-2', stripes: 2, discipline: 'BJJ', status: 'Promoted', details: '' })
+
+test('check-ins map to supplied class starts, including early and late arrivals', () => {
+  const times = [[7, 19], [8, 55], [10, 51], [11, 50], [17, 40], [18, 5], [19, 0], [19, 15]]
+  const result = buildTrainingTimeDistribution(times.map(([hour, minute]) => ({ date: new Date(2026, 0, 1, hour, minute), timeRecorded: true })))
+  assert.deepEqual(result.bins.map(bin => [bin.label, bin.sessions]), [['07:30', 1], ['09:00', 1], ['12:00', 2], ['18:00', 2], ['19:10', 2]])
+  assert.equal(result.recorded, times.length)
+  assert.equal(result.unknown, 0)
+})
+
+test('check-ins exactly between class starts prefer the upcoming class', () => {
+  const result = buildTrainingTimeDistribution([{ date: new Date(2026, 0, 1, 18, 35), timeRecorded: true }])
+  assert.equal(result.bins.find(bin => bin.label === '19:10').sessions, 1)
+})
+
+test('class-time chart excludes unknown times and retains empty scheduled slots', () => {
+  const result = buildTrainingTimeDistribution([
+    { date: new Date(2026, 0, 1) },
+    { date: new Date(2026, 0, 1, 18), timeRecorded: false },
+    { date: new Date(2026, 0, 1, 17, 50) },
+  ])
+  assert.equal(result.unknown, 2)
+  assert.equal(result.recorded, 1)
+  assert.equal(result.bins.find(bin => bin.label === '18:00').sessions, 1)
+  assert.equal(result.bins.reduce((sum, bin) => sum + bin.sessions, result.unknown), 3)
+  assert.ok(buildTrainingTimeDistribution([]).bins.every(bin => bin.sessions === 0))
+})
+test('arrival average is signed and excludes missing times', () => {
+  const timed = (hour, minute) => ({ date: new Date(2026, 0, 1, hour, minute), timeRecorded: true })
+  const early = buildArrivalSummary([timed(7, 20), timed(17, 40), { date: new Date(2026, 0, 1), timeRecorded: false }])
+  assert.equal(early.averageMinutes, -15)
+  assert.equal(early.recorded, 2)
+  assert.equal(early.unknown, 1)
+  assert.equal(buildArrivalSummary([timed(18, 10), timed(19, 20)]).averageMinutes, 10)
+  assert.equal(buildArrivalSummary([timed(17, 50), timed(18, 10)]).averageMinutes, 0)
+  assert.equal(buildArrivalSummary([timed(7, 30), timed(9, 0), timed(12, 0), timed(18, 0), timed(19, 10)]).averageMinutes, 0)
+  assert.equal(buildArrivalSummary([]).averageMinutes, null)
+  assert.equal(buildArrivalSummary([{ date: new Date(2026, 0, 1) }]).averageMinutes, null)
+})
 
 test('hours split is duration-weighted; session split is count-weighted', () => {
   const records = [session('Gi', 'Jan 1, 2024 7:00 AM', '90m'), session('NoGi', 'Jan 2, 2024 6:00 PM', '30m')]
