@@ -4,6 +4,9 @@ import './index.css'
 import App from './App.tsx'
 import { AccountProvider, useAccount } from './components/AccountContext'
 import './components/Account.css'
+import { initializeAnalytics } from './lib/firebase'
+
+void initializeAnalytics()
 
 function AccountWorkspace() {
   const { user, loading } = useAccount()

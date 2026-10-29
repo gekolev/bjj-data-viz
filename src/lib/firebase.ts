@@ -22,3 +22,13 @@ if (!firebaseConfig.apiKey) {
 export const firebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig)
 export const auth = getAuth(firebaseApp)
 export const db = getFirestore(firebaseApp)
+
+// Analytics is optional: unsupported browsers must still be able to use the app.
+export async function initializeAnalytics(): Promise<void> {
+  try {
+    const { getAnalytics, isSupported } = await import('firebase/analytics')
+    if (await isSupported()) getAnalytics(firebaseApp)
+  } catch (error) {
+    console.warn('Firebase Analytics could not be initialized.', error)
+  }
+}
