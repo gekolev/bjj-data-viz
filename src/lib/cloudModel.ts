@@ -81,3 +81,25 @@ export async function importChanges(csv: CsvImport | null, manual: ManualSession
   }
   return changes
 }
+
+/** An uploaded CSV is the complete imported history; manual entries are independent. */
+export async function replaceCsvChanges(csv: CsvImport, records: CloudRecords): Promise<Change[]> {
+  const desired = new Map<string, Change>()
+  for (const [kind, rows] of [['imported', csv.sessions], ['rank', csv.ranks ?? []]] as const) {
+    for (const row of rows) {
+      const id = await contentId(kind, row)
+      const existing = records[id]
+      desired.set(id, { id, kind, data: serializeRecord(row), fileName: csv.fileName, deleted: false, expectedRevision: existing?.revision ?? 0 })
+    }
+  }
+  const changes: Change[] = []
+  for (const [id, record] of Object.entries(records)) {
+    if (record.kind === 'manual' || record.deleted || desired.has(id)) continue
+    changes.push({ id, kind: record.kind, data: record.data, fileName: record.fileName, deleted: true, expectedRevision: record.revision })
+  }
+  for (const change of desired.values()) {
+    const existing = records[change.id]
+    if (!existing || existing.deleted || existing.fileName !== change.fileName) changes.push(change)
+  }
+  return changes
+}

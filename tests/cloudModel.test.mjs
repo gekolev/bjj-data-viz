@@ -85,3 +85,39 @@ test('stale edits of a remotely deleted row still require revision validation', 
   assert.equal(changes.length, 1)
   assert.equal(changes[0].expectedRevision, 3)
 })
+
+const applyChanges = (records, changes) => ({ ...records, ...Object.fromEntries(changes.map(change => [change.id, record(change.data, { kind: change.kind, deleted: change.deleted, fileName: change.fileName, revision: change.expectedRevision + 1 })])) })
+const rank = { id: 0, date: session.date, rank: 'B-1', stripes: 1, discipline: 'BJJ', status: 'Promoted', details: '' }
+
+test('a second 1000-session CSV replaces the first and cleans up already accumulated imports', async () => {
+  const first = { fileName: 'first.csv', sessions: Array.from({ length: 1000 }, (_, id) => ({ ...session, id, date: new Date(Date.UTC(2020, 0, 1 + id)) })), ranks: [rank] }
+  const second = { fileName: 'second.csv', sessions: Array.from({ length: 1000 }, (_, id) => ({ ...session, id, date: new Date(Date.UTC(2023, 0, 1 + id)) })), ranks: [] }
+  let records = { manual: record() }
+  records = applyChanges(records, await model.importChanges(first, [], records))
+  records = applyChanges(records, await model.importChanges(second, [], records))
+  assert.equal(model.workspaceFromRecords(records).csvImport.sessions.length, 2000)
+  records = applyChanges(records, await model.replaceCsvChanges(second, records))
+  const workspace = model.workspaceFromRecords(records)
+  assert.equal(workspace.csvImport.sessions.length, 1000)
+  assert.equal(workspace.csvImport.ranks.length, 0)
+  assert.equal(workspace.csvImport.fileName, 'second.csv')
+  assert.equal(workspace.manualData.sessions.length, 1)
+  assert.deepEqual(await model.replaceCsvChanges(second, records), [])
+})
+
+test('CSV replacement retains shared rows, updates filenames, replaces ranks and can restore an older CSV', async () => {
+  const first = { fileName: 'first.csv', sessions: [session], ranks: [rank] }
+  let records = applyChanges({}, await model.replaceCsvChanges(first, {}))
+  const second = { fileName: 'second.csv', sessions: [session, { ...session, duration: 90 }], ranks: [{ ...rank, rank: 'BK-0', stripes: 0 }] }
+  records = applyChanges(records, await model.replaceCsvChanges(second, records))
+  let workspace = model.workspaceFromRecords(records)
+  assert.equal(workspace.csvImport.sessions.length, 2)
+  assert.equal(workspace.csvImport.ranks.length, 1)
+  assert.equal(workspace.csvImport.ranks[0].rank, 'BK-0')
+  assert.equal(workspace.csvImport.fileName, 'second.csv')
+  records = applyChanges(records, await model.replaceCsvChanges(first, records))
+  workspace = model.workspaceFromRecords(records)
+  assert.equal(workspace.csvImport.sessions.length, 1)
+  assert.equal(workspace.csvImport.ranks[0].rank, 'B-1')
+  assert.equal(workspace.csvImport.fileName, 'first.csv')
+})

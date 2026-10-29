@@ -4,7 +4,7 @@ import { auth } from './firebase'
 import { authError } from './authErrors'
 import { loadCsvImport, removeCsvImport, saveCsvImport, type CsvImport } from './importStorage'
 import { loadManualSessions, saveManualSessions, type ManualSession } from './manualStorage'
-import { canonical, importChanges, manualChanges, workspaceFromRecords, type Change, type CloudRecords } from './cloudModel'
+import { canonical, importChanges, manualChanges, replaceCsvChanges, workspaceFromRecords, type Change, type CloudRecords } from './cloudModel'
 import { commitChanges, loadCloudCache, saveCloudCache, saveProfile, subscribeRecords } from './cloudStorage'
 
 const guestSignature = () => canonical({ csv: loadCsvImport(), manual: loadManualSessions().sessions })
@@ -82,7 +82,7 @@ export function useTrainingWorkspace() {
     return write([{ id: row.cloudId, kind: 'manual', data: existing.data, fileName: '', deleted: true, expectedRevision: row.cloudRevision ?? existing.revision }])
   }
   const importCsv = async (next: CsvImport) => {
-    if (uid) return write(await importChanges(next, [], records.current, true))
+    if (uid) return write(await replaceCsvChanges(next, records.current))
     if (!saveCsvImport(next)) { setError('Browser storage is full or unavailable. Your CSV was not saved.'); return false }
     setCsvImport(next); setHasGuestData(true); setError(''); return true
   }

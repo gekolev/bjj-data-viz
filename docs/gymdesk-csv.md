@@ -24,6 +24,8 @@ The script reads attendance and the `/members/ranks` table using your existing l
 
 Return to Mat Metrics and click **Import CSV**, or drag the downloaded CSV onto the app. Training charts update with your attendance, and **Belts & stripes** on Overview and the Dev tab shows your dated rank milestones. Rank records do not count as training sessions. Older attendance-only CSVs still work.
 
+Each CSV upload replaces the previous imported attendance and rank history, including when signed into an account. Upload your complete history each time. Manually logged sessions are kept separately.
+
 Gymdesk rank codes such as `W-4` and `B-2` display as white belt with four stripes and blue belt with two stripes. Dates such as `03/01/2024` use day/month/year, so this is 3 January. The original rank code and table row are preserved in the CSV.
 
 The training calendar marks promotion days, and the complete training journey shows belt-colored rank periods and promotion diamonds. The Dev calendar and seasonal wheel can color sessions by **Belt** or **Style**; their details show the belt and stripe count recorded on that date. Monthly activity also lists that year's rank milestones. Dates before the first recorded rank remain unknown. Previously exported rows with duplicated rank text such as `B-2 B-2 - BJJ` are supported without another scrape.
