@@ -226,3 +226,48 @@ body.fill-screen{zoom:var(--screen-scale,1);min-height:calc(100vh / var(--screen
   .heading-actions .manual-entry-button{flex:1}
   .heading-actions>.button-primary:last-of-type{flex:1;min-height:44px;font-size:15px}
 }
+/* A quiet setup area gives way to the training visualizations. */
+.contact-footer{padding:20px 24px 24px;text-align:center;color:#71717a;font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:12px;line-height:1.7}
+.contact-footer p{margin:0}
+.contact-footer a{color:inherit;text-decoration:underline;text-decoration-color:#d4d4d8;text-underline-offset:3px;overflow-wrap:anywhere}
+.contact-footer a:hover{color:#3f3f46;text-decoration-color:currentColor}
+.contact-footer a:focus-visible{outline:2px solid #dc2626;outline-offset:4px;border-radius:2px}
+.data-details>summary{display:none}
+.overview-content .page-heading{align-items:center;gap:16px;margin-bottom:16px}
+.overview-content .page-heading .eyebrow{display:none}
+.overview-content .page-heading h1{font-size:24px;letter-spacing:-.6px;margin:0 0 4px}
+.overview-content .page-heading p{margin:0;font-size:14px}
+.overview-content .heading-actions .manual-entry-button{background:#fff;color:#505050;border-color:#d4d4d8;box-shadow:none}
+.overview-content .heading-actions .manual-entry-button:hover{background:#e9e9ec}
+.overview-content .heading-actions .button-primary:not(.manual-entry-button){background:var(--accent,#dc2626);color:#fff;border-color:var(--accent,#dc2626)}
+.overview-content .heading-actions .button-primary:not(.manual-entry-button):hover{background:#b91c1c;border-color:#b91c1c}
+.overview-data-details{margin-bottom:16px;border:1px solid #dddde2;border-radius:8px;background:#eeeef1;color:#62626c;font-size:14px}
+.overview-data-details>summary{display:flex;align-items:center;gap:9px;padding:12px 14px;cursor:pointer;list-style:none}
+.overview-data-details>summary::-webkit-details-marker{display:none}
+.overview-data-details>summary>span:first-of-type{min-width:0;overflow-wrap:anywhere}
+.data-details-label{margin-left:auto;font-size:12px;white-space:nowrap}
+.overview-data-details>summary>svg{flex-shrink:0}
+.overview-data-details[open]>summary>svg:last-child{transform:rotate(180deg)}
+.overview-data-details[open]>summary{border-bottom:1px solid #dddde2}
+.overview-data-details .import-strip{margin:12px;background:transparent;border:0;padding:0;min-height:48px}
+.overview-data-details .import-copy span{color:#71717a;line-height:1.5}
+.overview-data-details :is(.style-estimate-note,.storage-message,.upload-error){margin:12px;line-height:1.6}
+.overview-content .overview-period-bar{padding:0 0 18px;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+.overview-content .overview-period-controls{gap:10px 16px}
+.overview-content .overview-period-controls .section-title{display:none}
+.overview-content .overview-period-title{font-size:14px;font-weight:500;color:#62626c;margin:0}
+.overview-content .overview-period-select{min-height:36px;border-color:#d4d4d8;background:#fff;color:#52525b;gap:8px}
+.overview-content .overview-period-select select{min-height:34px;font-size:14px;font-weight:500}
+.overview-content .overview-period-count{font-size:14px;font-weight:500;color:#62626c}
+.overview-content .overview-period-help{font-size:12px}
+.overview-dashboard-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 18px;border-top:1px solid #d4d4d8;padding-top:26px}
+.overview-dashboard-heading h2{margin:0;font-size:20px;font-weight:650;letter-spacing:-.4px}
+.overview-dashboard-heading>span{color:#71717a;font-size:13px}
+.overview-content .chart-dialog:not([open]) .panel,.overview-content .stat-card{box-shadow:0 3px 12px #18181b06}
+@media(max-width:700px){
+ .overview-content .page-heading{align-items:flex-start;flex-direction:column;gap:12px}
+ .overview-content .heading-actions{flex-wrap:wrap}
+ .overview-dashboard-heading{align-items:flex-start;flex-direction:column;gap:5px;padding-top:20px}
+ .data-details-label{display:none}
+ .overview-data-details>summary>svg:last-child{margin-left:auto}
+}

@@ -26,6 +26,7 @@ import { allocateTrainingStyles } from './lib/allocateTrainingStyles'
 import { parseSession } from './lib/sessionParser'
 import InstructionsPage from './InstructionsPage'
 import PitchPage from './PitchPage'
+import ContactFooter from './components/ContactFooter'
 import { useTrainingWorkspace } from './lib/useTrainingWorkspace'
 import { useAccount } from './components/AccountContext'
 import AccountModal from './components/AccountModal'
@@ -300,7 +301,7 @@ function App() {
     URL.revokeObjectURL(link.href)
   }
 
-  if (activePage === 'welcome') return <PitchPage onExplore={() => goToPage('overview')} onLog={() => goToPage('log')} />
+  if (activePage === 'welcome') return <><PitchPage onExplore={() => goToPage('overview')} onLog={() => goToPage('log')} /><ContactFooter /></>
 
   return (
     <div className={`app-shell${sidebarCollapsed ? ' sidebar-collapsed' : ''}`} onDragOver={(event) => { event.preventDefault(); setDragging(true) }} onDragLeave={(event) => { if (event.currentTarget === event.target) setDragging(false) }} onDrop={onDrop}>
@@ -338,8 +339,10 @@ function App() {
           {workspace.cloud && workspace.hasGuestData && <div className="account-banner"><p>This browser has guest training data. Import it into your account? Existing account records will be kept.</p><button className="button button-primary" disabled={!workspace.ready || workspace.busy} onClick={() => void workspace.importGuest()}>Import browser data</button><button className="button button-outline" disabled={workspace.busy} onClick={workspace.dismissGuest}>Not now</button></div>}
           {workspace.cloud && !workspace.ready && <div className="account-banner"><p>Connecting to your account. Training changes are available once the cloud connection is ready.</p><button className="button button-outline" onClick={workspace.retry}>Retry connection</button></div>}
           {workspace.cacheWarning && <div className="account-banner"><p>{workspace.cacheWarning}</p></div>}
-          <div className="page-heading" inert={!workspace.ready || workspace.busy}><div><div className="eyebrow"><span className="eyebrow-dot" /> YOUR JIU-JITSU JOURNEY</div><h1>{activePage === 'wrapped' ? 'Your year on the mat' : activePage === 'log' ? 'Log your training' : activePage === 'overview' ? 'Training overview' : activePage === 'sessions' ? 'Training sessions' : activePage === 'instructions' ? 'Get your training data' : '3D Data Lab'}</h1><p>A little progress every day adds up to a lot.</p></div><div className="heading-actions"><button className="button button-primary manual-entry-button" onClick={() => goToPage('log')}><Dumbbell size={16} /> Log training</button><button className="button button-outline" onClick={downloadTemplate}><ArrowDownToLine size={15} /> Template</button><button className="button button-primary" onClick={() => fileRef.current?.click()}><Upload size={15} /> Import CSV</button><input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFileChange} hidden /></div></div>
+          <div className="page-heading" inert={!workspace.ready || workspace.busy}><div><div className="eyebrow"><span className="eyebrow-dot" /> YOUR JIU-JITSU JOURNEY</div><h1>{activePage === 'wrapped' ? 'Your year on the mat' : activePage === 'log' ? 'Log your training' : activePage === 'overview' ? 'Training overview' : activePage === 'sessions' ? 'Training sessions' : activePage === 'instructions' ? 'Get your training data' : '3D Data Lab'}</h1><p>A little progress every day adds up to a lot.</p></div><div className="heading-actions"><button className="button button-primary manual-entry-button" onClick={() => goToPage('log')}><Dumbbell size={16} /> Log training</button>{activePage === 'instructions' && <button className="button button-outline" onClick={downloadTemplate}><ArrowDownToLine size={15} /> Template</button>}<button className="button button-primary" onClick={() => fileRef.current?.click()}><Upload size={15} /> Import CSV</button><input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFileChange} hidden /></div></div>
 
+          <details className={activePage === 'overview' ? 'overview-data-details' : 'data-details'} open={activePage === 'overview' ? sessions.length === 0 || !!storageMessage || !!uploadMessage : true}>
+            <summary><FileSpreadsheet size={15} /><span>{sessions.length ? `${sessions.length} sessions · ${csvImport?.fileName ?? 'Manually logged training'}` : 'Add your training data'}</span><span className="data-details-label">{sessions.length ? 'Data & import' : 'Upload a CSV to get started'}</span><ChevronDown size={14} /></summary>
           <div inert={!workspace.ready || workspace.busy} className="import-strip" onClick={() => fileRef.current?.click()} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter') fileRef.current?.click() }}>
             <div className="import-icon"><FileSpreadsheet size={17} /></div><div className="import-copy"><strong>{uploadMessage || 'Your data, your dashboard'}</strong><span>{workspace.cloud ? 'CSV records are added to your account. Existing training is kept.' : uploadMessage ? 'Your CSV stays in this browser until you import it into an account.' : 'Drop a CSV anywhere or click to upload. Create a profile to save across devices.'}</span></div><button className="text-button" onClick={(event) => { event.stopPropagation(); fileRef.current?.click() }}>Choose file <ArrowUpRight size={14} /></button>
           </div>
@@ -347,6 +350,7 @@ function App() {
 
           {storageMessage && <div className="storage-message" role="alert">{storageMessage}</div>}
           {(allocation.estimatedCount > 0 || allocation.unknownCount > 0) && <div className="style-estimate-note" role="status">{allocation.estimatedCount > 0 ? `${allocation.estimatedCount} unclassified sessions distributed proportionally using the known Gi / No-Gi split (${Math.round((allocation.giShare ?? 0) * 100)}% / ${Math.round((1 - (allocation.giShare ?? 0)) * 100)}%). Estimated styles are included throughout the dashboard.` : `${allocation.unknownCount} sessions remain unclassified: no known Gi or No-Gi records are available to calculate a ratio.`}</div>}
+          </details>
           <div inert={!workspace.ready || workspace.busy}>
           {activePage === 'wrapped' ? <YearWrapped sessions={sessions} sample={demoEnabled} profileEmail={user?.email} /> : activePage === 'log' ? <ManualLog key={user?.uid ?? 'guest'} sessions={manualSessions} error={manualData.error} cloud={workspace.cloud} onSave={row => updateManual([...manualSessions.filter(item => row.cloudId ? item.cloudId !== row.cloudId : item.id !== row.id), row])} onDelete={deleteManual} /> : activePage === 'instructions' ? <InstructionsPage /> : activePage === 'dev' ? <DevPage sessions={sessions} ranks={rankHistory} /> : activePage === 'overview' ? <>
             <section className="overview-period-bar" aria-label="Overview period filter">
@@ -358,6 +362,7 @@ function App() {
               <details className="overview-period-help"><summary id="overview-period-scope">Filters totals and session breakdowns · see affected charts</summary><p>Applies to the four summary cards, Gi vs. No-Gi, Class types, Weekly rhythm, Coaches &amp; academy, Training time of day, and Recent sessions. These charts show a matching period label.</p><p>The training calendar and Training activity use their year selector. Both training timelines and Year over year show the full history. Rolling periods end at your latest training date.</p></details>
             </section>
 
+            <div className="overview-dashboard-heading"><h2>Your training in focus</h2><span>Consistency, progress, and time on the mat</span></div>
             <div className="stats-grid">
               <article className="stat-card"><div className="stat-top"><span>Total sessions</span><span className="stat-icon green"><Dumbbell size={16} /></span></div><div className="stat-value">{filteredSessions.length}<span className="stat-unit">sessions</span></div><div className="stat-foot"><span className="stat-accent"><ArrowUpRight size={13} /> Keep showing up</span><span>since you started</span></div></article>
               <article className="stat-card"><div className="stat-top"><span>Time on the mat</span><span className="stat-icon purple"><Clock3 size={16} /></span></div><div className="stat-value">{Math.floor(metrics.minutes / 60)}<span className="stat-unit">h</span> {metrics.minutes % 66}<span className="stat-unit">m</span></div><div className="stat-foot"><span>Avg. {formatDuration(metrics.average)}</span><span>per session</span></div></article>
@@ -391,6 +396,7 @@ function App() {
           </> : <SessionBrowser key={csvImport?.fileName ?? 'empty'} sessions={sessions} initialQuery={query} initialStyle={styleFilter} renderTable={rows => <SessionTable sessions={rows} />} />}
           </div>
         </div>
+        <ContactFooter />
       </main>
       <nav className="mobile-navigation" aria-label="Modules">
         {([
