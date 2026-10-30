@@ -21,7 +21,7 @@ export function subscribeRecords(uid: string, cached: CloudRecords, next: (recor
   const records = collection(db, 'users', uid, 'records')
   // Inclusive cursor safely replays rows sharing the most recent commit timestamp.
   const source = timestamps.length ? query(records, where('updatedAt', '>=', new Timestamp(timestamps[0].seconds, timestamps[0].nanoseconds))) : records
-  let merged = { ...cached }
+  const merged = { ...cached }
   return onSnapshot(source, { includeMetadataChanges: true }, snapshot => {
     try {
       if (snapshot.metadata.hasPendingWrites) return

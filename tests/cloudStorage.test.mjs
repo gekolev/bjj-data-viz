@@ -51,7 +51,6 @@ test('incremental subscriptions include the newest timestamp and keep deletion m
  stop(); assert.equal(sdk.listener, null);
 });
 
-
 test('manual sessions persist as individual account documents and reload with every detail', async () => {
  const model = await import(modelUrl);
  const manual = { ...session, date: new Date(session.date), notes: 'Practice escapes', timeRecorded: true, rounds: 5, effort: 'Hard', focus: ['Escapes', 'Drilling'] };
@@ -98,17 +97,21 @@ test('unverified accounts cannot commit records', async () => {
  finally { firebase.auth.currentUser.emailVerified = true; }
 });
 
-test('delete all removes manual, CSV and rank history and preserves existing deletion markers', async () => {
+
+
+test('delete all soft-deletes each active record while retaining database documents', async () => {
  const model = await import(modelUrl);
  sdk.reset({ manual: record(), imported: record(2, { kind: 'imported', fileName: 'history.csv' }), rank: record(3, { kind: 'rank', data: { id: 0, date: session.date, rank: 'B-1', stripes: 1, discipline: 'BJJ', status: 'Promoted', details: '' } }), removed: record(4, { deleted: true }) });
  const changes = model.deleteAllRecordChanges(sdk.rows);
  assert.equal(changes.length, 3);
- assert.ok(changes.every(change => change.deleted));
  await storage.commitChanges('alice', changes);
+ assert.equal(Object.keys(sdk.rows).length, 4);
+ assert.ok(Object.values(sdk.rows).every(row => row.deleted));
+ assert.equal(sdk.rows.manual.data.notes, session.notes);
+ assert.equal(sdk.rows.manual.revision, 2);
+ assert.equal(sdk.rows.removed.revision, 4);
  const workspace = model.workspaceFromRecords(sdk.rows);
  assert.equal(workspace.csvImport, null);
  assert.equal(workspace.manualData.sessions.length, 0);
- assert.equal(sdk.rows.removed.revision, 4);
- assert.ok(Object.values(sdk.rows).every(row => row.deleted));
  assert.deepEqual(model.deleteAllRecordChanges(sdk.rows), []);
 });

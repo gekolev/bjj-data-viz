@@ -104,7 +104,8 @@ export async function replaceCsvChanges(csv: CsvImport, records: CloudRecords): 
   return changes
 }
 
-/** Remove all active training records while preserving cross-device deletion markers. */
+
+/** Clear account history using deletion markers for cross-device synchronization. */
 export function deleteAllRecordChanges(records: CloudRecords): Change[] {
   return Object.entries(records).filter(([, record]) => !record.deleted).map(([id, record]) => ({
     id, kind: record.kind, data: record.data, fileName: record.fileName,

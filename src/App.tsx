@@ -5,7 +5,7 @@ import demoCsv from '../demodata/gymdesk-all-attendance-2026-10-03.csv?raw'
 import type { CsvImport } from './lib/importStorage'
 import {
   Activity, ArrowDownToLine, ArrowUpRight, Box, CalendarDays,
-  ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clock3, Dumbbell,
+  CircleCheck, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clock3, Dumbbell,
   FileSpreadsheet, Filter, Flame, MapPin, MoreHorizontal, Search, Sparkles,
   Upload, Users, X, BookOpen,
 } from 'lucide-react'
@@ -132,6 +132,12 @@ function App() {
   const [query, setQuery] = useState('')
   const [styleFilter, setStyleFilter] = useState('All styles')
   const [uploadMessage, setUploadMessage] = useState('')
+  const [successToast, setSuccessToast] = useState<{ title: string; description: string } | null>(null)
+  useEffect(() => {
+    if (!successToast) return
+    const timer = window.setTimeout(() => setSuccessToast(null), 8000)
+    return () => window.clearTimeout(timer)
+  }, [successToast])
   const [dragging, setDragging] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const importRequest = useRef(0)
@@ -254,6 +260,7 @@ function App() {
         const nextImport = { fileName: file.name, sessions: rows, ranks }
         if (!await importCsv(nextImport)) { trackEvent('csv_import_failed', { reason: 'save_failed' }); setUploadMessage('CSV could not be saved. Please try again.'); return }
         if (request !== importRequest.current) return
+        setSuccessToast({ title: 'CSV imported successfully', description: rows.length + ' sessions and ' + ranks.length + ' rank records saved ' + (workspace.cloud ? 'to your account.' : 'on this device.') })
         trackEvent('csv_import_succeeded', { session_count: rows.length, rank_count: ranks.length, skipped_rank_count: skippedRanks })
         setDemoImport(null)
         if (rows.length) setAnnualYear(Math.max(...rows.map((row) => row.date.getFullYear())))
@@ -353,7 +360,12 @@ function App() {
           </div>}
           </OverviewSetup>
           <div inert={!workspace.ready || workspace.busy}>
-          {activePage === 'wrapped' ? <YearWrapped sessions={sessions} sample={demoEnabled} profileEmail={user?.email} /> : activePage === 'log' ? <ManualLog key={user?.uid ?? 'guest'} sessions={manualSessions} error={manualData.error} cloud={workspace.cloud} onSave={row => updateManual([...manualSessions.filter(item => row.cloudId ? item.cloudId !== row.cloudId : item.id !== row.id), row])} onDelete={deleteManual} /> : activePage === 'instructions' ? <InstructionsPage /> : activePage === 'dev' ? <DevPage sessions={sessions} ranks={rankHistory} /> : activePage === 'overview' ? <>
+          {activePage === 'wrapped' ? <YearWrapped sessions={sessions} sample={demoEnabled} profileEmail={user?.email} /> : activePage === 'log' ? <ManualLog key={user?.uid ?? 'guest'} sessions={manualSessions} error={manualData.error} cloud={workspace.cloud} onSave={async row => {
+            const editing = manualSessions.some(item => row.cloudId ? item.cloudId === row.cloudId : item.id === row.id)
+            const saved = await updateManual([...manualSessions.filter(item => row.cloudId ? item.cloudId !== row.cloudId : item.id !== row.id), row])
+            if (saved) setSuccessToast({ title: editing ? 'Training updated' : 'Training saved!', description: workspace.cloud ? 'Saved to your account. Your dashboard is updated.' : 'Saved on this device. Your dashboard is updated.' })
+            return saved
+          }} onDelete={deleteManual} /> : activePage === 'instructions' ? <InstructionsPage /> : activePage === 'dev' ? <DevPage sessions={sessions} ranks={rankHistory} /> : activePage === 'overview' ? <>
             <div className="overview-dashboard-heading"><h2>Your training in focus</h2><span>Consistency, progress, and time on the mat</span></div>
             <div className="stats-grid">
               <article className="stat-card"><div className="stat-top"><span>Total sessions</span><span className="stat-icon green"><Dumbbell size={16} /></span></div><div className="stat-value">{filteredSessions.length}<span className="stat-unit">sessions</span></div><div className="stat-foot"><span className="stat-accent"><ArrowUpRight size={13} /> Keep showing up</span><span>since you started</span></div></article>
@@ -400,6 +412,7 @@ function App() {
           { page: 'instructions', label: 'Get CSV', icon: BookOpen },
         ] as const).map(({ page, label, icon: Icon }) => <button key={page} className={activePage === page ? 'active' : undefined} aria-current={activePage === page ? 'page' : undefined} onClick={() => { if (activePage !== page) { goToPage(page); window.scrollTo({ top: 0, behavior: 'instant' }) } }}><Icon size={21} aria-hidden="true" /><span>{label}</span></button>)}
       </nav>
+      {successToast && <div className="success-toast" role="status" aria-live="polite" aria-atomic="true"><CircleCheck size={30} aria-hidden="true" /><div><strong>{successToast.title}</strong><p>{successToast.description}</p></div><button type="button" aria-label="Dismiss success message" onClick={() => setSuccessToast(null)}><X size={20} /></button></div>}
       {accountOpen && <AccountModal onClose={() => setAccountOpen(false)} pending={workspace.busy} recordsReady={workspace.ready} recordsError={workspace.error} onDeleteRecords={workspace.deleteAllRecords} />}
     </div>
   )
