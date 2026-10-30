@@ -5,7 +5,7 @@ import { bjjRankHistory, describeRank, rankAtDate, type RankPromotion } from '..
 import { RankBadge } from './RankContext'
 
 type Session = { id: number; date: Date; duration: number; style: 'Gi' | 'NoGi' | 'Other'; classType: string; instructor: string; venue: string }
-const colors = { Gi: '#dc2626', NoGi: '#52525b', Other: '#d97706' }
+const colors = { Gi: '#dc2626', NoGi: 'var(--chart-secondary)', Other: '#d97706' }
 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const dateFormat = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 const calendarX = (date: Date) => 80 + (date.getMonth() + (date.getDate() - 1) / new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()) * 80
@@ -58,10 +58,10 @@ function TimelinePlot({ sessions, styleFilter, query, ranks = [] }: { sessions: 
     <div className="chart-legend timeline-legend">{Object.entries(colors).map(([style, color]) => <span key={style}><i className="legend-swatch" style={{ background: color }} />{style === 'NoGi' ? 'No-Gi' : style}</span>)}<span className="timeline-count">{data.visible.length} of {sessions.length} sessions</span></div>
     {history.length > 0 && <p className="rank-chart-note">The belt-colored track below each year shows your recorded rank at that time. Diamonds mark belt or stripe promotions; select one for details. Session dots keep their training-style colors.</p>}
     {data.rows.length ? <div className="training-timeline-chart"><svg viewBox={`0 0 1060 ${data.height}`} role="group" aria-label="Training sessions by year and month" className="training-timeline-svg">
-      {months.map((month, index) => <text key={month} x={120 + index * 80} y={24} textAnchor="middle" fill="#717171" fontSize={fontSize}>{month}</text>)}
+      {months.map((month, index) => <text key={month} x={120 + index * 80} y={24} textAnchor="middle" fill="var(--chart-text)" fontSize={fontSize}>{month}</text>)}
       {data.rows.map(row => <g key={row.year}>
-        <rect x={72} y={row.top} width={976} height={row.height - 8} rx={8} fill={row.year % 2 ? '#f7f7f7' : '#eeeeee'} />
-        <text x={12} y={row.top + row.height / 2} fill="#494949" fontWeight={650} fontSize={expanded ? 22 : 17}>{row.year}</text>
+        <rect x={72} y={row.top} width={976} height={row.height - 8} rx={8} fill={row.year % 2 ? 'var(--chart-row)' : 'var(--chart-row-alt)'} />
+        <text x={12} y={row.top + row.height / 2} fill="var(--chart-text)" fontWeight={650} fontSize={expanded ? 22 : 17}>{row.year}</text>
         {history.map((rank, index) => {
           const start = new Date(Math.max(new Date(row.year, 0, 1).getTime(), rank.date.getTime()))
           const end = new Date(Math.min(new Date(row.year + 1, 0, 1).getTime(), history[index + 1]?.date.getTime() ?? new Date(row.year + 1, 0, 1).getTime()))
@@ -77,8 +77,8 @@ function TimelinePlot({ sessions, styleFilter, query, ranks = [] }: { sessions: 
           const select = () => { setSelectedRank(rank); setSelectedId(null) }
           return <path key={`promotion-${rank.id}`} d={`M ${x} ${y - 8} l 8 8 l -8 8 l -8 -8 Z`} fill={describeRank(rank).color} stroke="#373737" strokeWidth={2} tabIndex={0} role="button" aria-label={`Promotion ${rank.rank}, ${describeRank(rank).label}, ${rank.date.toLocaleDateString('en-GB')}`} onMouseEnter={select} onFocus={select} onClick={select} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select() } }}><title>{`${rank.date.toLocaleDateString('en-GB')}: ${describeRank(rank).label}`}</title></path>
         })}
-        {months.map((month, index) => <line key={month} x1={80 + index * 80} x2={80 + index * 80} y1={row.top + 8} y2={row.top + row.height - 16} stroke="#dedede" strokeDasharray="3 5" />)}
-        {!row.points.length && <text x={560} y={row.top + row.height / 2} textAnchor="middle" fill="#8c8c8c" fontSize={fontSize}>No sessions logged{sessions.some(session => session.date.getFullYear() === row.year) ? ' matching your filters' : ''}</text>}
+        {months.map((month, index) => <line key={month} x1={80 + index * 80} x2={80 + index * 80} y1={row.top + 8} y2={row.top + row.height - 16} stroke="var(--chart-grid)" strokeDasharray="3 5" />)}
+        {!row.points.length && <text x={560} y={row.top + row.height / 2} textAnchor="middle" fill="var(--chart-text)" fontSize={fontSize}>No sessions logged{sessions.some(session => session.date.getFullYear() === row.year) ? ' matching your filters' : ''}</text>}
         {row.points.map(({ session, x, lane }) => <circle key={session.id} cx={x} cy={row.top + 24 + lane * 12} r={selectedId === session.id ? 5 : 4} fill={colors[session.style]} stroke={selectedId === session.id ? '#363636' : '#fff'} strokeWidth={selectedId === session.id ? 2 : 1} tabIndex={0} role="button" aria-label={`${dateFormat.format(session.date)}, ${session.classType}, ${session.style === 'NoGi' ? 'No-Gi' : session.style}, ${session.duration} minutes, ${session.instructor}`} aria-pressed={selectedId === session.id} onMouseEnter={() => { setSelectedId(session.id); setSelectedRank(null) }} onFocus={() => { setSelectedId(session.id); setSelectedRank(null) }} onClick={() => { setSelectedId(session.id); setSelectedRank(null) }} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(session.id); setSelectedRank(null) } }}><title>{`${dateFormat.format(session.date)} • ${session.classType} • ${session.duration} min`}</title></circle>)}
       </g>)}
     </svg></div> : <div className="timeline-empty">Import your CSV to see your complete training journey.</div>}

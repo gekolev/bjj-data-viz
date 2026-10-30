@@ -20,12 +20,12 @@ export default function TrainingTimeChart({ sessions, period }: { sessions: Jour
       {recorded ? <div className="training-time-chart" style={{ minHeight: Math.max(220, bins.length * 30 + 40) }} role="img" aria-label={`Sessions by time of day: ${bins.map(bin => `${bin.label}: ${bin.sessions}`).join('; ')}`}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={bins} layout="vertical" margin={{ top: 8, right: 36, left: 0, bottom: 4 }} barCategoryGap="20%">
-            <CartesianGrid horizontal={false} stroke="#eeeee9" strokeDasharray="4 5" />
-            <XAxis type="number" allowDecimals={false} domain={[0, 'auto']} tickLine={false} axisLine={false} tick={{ fill: '#747474', fontSize: 12 }} />
-            <YAxis type="category" dataKey="label" width={60} interval={0} tickLine={false} axisLine={false} tick={{ fill: '#747474', fontSize: 14 }} />
-            <Tooltip labelFormatter={label => `${label} class`} cursor={{ fill: '#f4f4f4' }} contentStyle={{ border: '1px solid #e7e7e7', borderRadius: 10, fontSize: 14 }} />
+            <CartesianGrid horizontal={false} stroke="var(--chart-grid)" strokeDasharray="4 5" />
+            <XAxis type="number" allowDecimals={false} domain={[0, 'auto']} tickLine={false} axisLine={false} tick={{ fill: 'var(--chart-text)', fontSize: 12 }} />
+            <YAxis type="category" dataKey="label" width={60} interval={0} tickLine={false} axisLine={false} tick={{ fill: 'var(--chart-text)', fontSize: 14 }} />
+            <Tooltip labelFormatter={label => `${label} class`} cursor={{ fill: 'var(--chart-hover)' }} contentStyle={{ border: '1px solid #e7e7e7', borderRadius: 10, fontSize: 14 }} />
             <Bar dataKey="sessions" name="Sessions" fill="#dc2626" radius={[4, 4, 0, 0]} maxBarSize={30}>
-              <LabelList dataKey="sessions" position="right" fill="#52525b" fontSize={14} />
+              <LabelList dataKey="sessions" position="right" fill="var(--chart-secondary)" fontSize={14} />
             </Bar>
           </BarChart>
         </ResponsiveContainer>

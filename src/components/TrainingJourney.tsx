@@ -4,7 +4,7 @@ import { describeRank, type RankPromotion } from '../lib/rankHistory'
 import { RankBadge } from './RankContext'
 import { buildTrainingJourney, sessionHasRecordedTime, journeyStyles as styles, type JourneySession as Session } from '../lib/trainingJourney'
 
-const colors = { Gi: '#dc2626', NoGi: '#52525b', Other: '#d97706' }
+const colors = { Gi: '#dc2626', NoGi: 'var(--chart-secondary)', Other: '#d97706' }
 const monthLabel = (date: Date) => date.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
 const number = (value: number) => value.toLocaleString('en-GB', { maximumFractionDigits: 1 })
 function breakdown(sessions: Session[], field: 'classType' | 'instructor' | 'venue') {
@@ -34,16 +34,16 @@ export default function TrainingJourney({ sessions, ranks }: { sessions: Session
     <div className="panel-heading"><div><h2>Time on the mat</h2><p>See how each month builds your complete training journey.</p><p className="chart-explanation">Stacked bars show monthly {metric} by style (left axis). The gold line tracks your running total (right axis); each diamond marks a month with rank records. Select a month to explore exact promotion dates.</p><p className="journey-data-note">Hours weights the style split by duration; Sessions weights every session equally. Dates use the browser’s local calendar. {estimatedStyles > 0 && `${estimatedStyles} unlabeled sessions have estimated styles, allocated using the full-history known Gi/No-Gi session ratio. `}{estimatedDurations > 0 && `${estimatedDurations} sessions have no recorded duration and use the app’s 60-minute estimate. `}{legacyMetadata && 'Reimport your CSV to identify missing durations and training times in older saved records.'}</p></div><span className="chart-type-label">FULL HISTORY</span></div>
     <div className="journey-toolbar"><div className="rank-color-controls" role="group" aria-label="Journey measurement">{(['hours', 'sessions'] as const).map(value => <button key={value} className={metric === value ? 'active' : ''} aria-pressed={metric === value} onClick={() => setMetric(value)}>{value === 'hours' ? 'Hours' : 'Sessions'}</button>)}</div><div className="chart-legend">{styles.map(style => <span key={style}><i className="legend-swatch" style={{ background: colors[style] }} />{style === 'NoGi' ? 'No-Gi' : style}</span>)}<span><i className="legend-swatch" style={{ background: '#b88716' }} />Cumulative</span><span>◇ Rank milestone</span></div></div>
     {data.length ? <div className="journey-scroll"><svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="group" aria-label={`Monthly and cumulative training ${metric}`}>
-      <text x={left} y={16} fontSize={11} fill="#71717a">Monthly {metric}</text><text x={right} y={16} textAnchor="end" fontSize={11} fill="#926a0d">Total {metric}</text>
-      {[0, .25, .5, .75, 1].map(fraction => <g key={fraction}><line x1={left} x2={right} y1={bottom - fraction * (bottom - top)} y2={bottom - fraction * (bottom - top)} stroke="#e7e7e7" strokeDasharray="3 5" /><text x={left - 8} y={bottom - fraction * (bottom - top) + 4} textAnchor="end" fontSize={10} fill="#71717a">{number(monthlyMax * fraction)}</text><text x={right + 8} y={bottom - fraction * (bottom - top) + 4} fontSize={10} fill="#926a0d">{number(cumulativeMax * fraction)}</text></g>)}
+      <text x={left} y={16} fontSize={11} fill="var(--chart-text)">Monthly {metric}</text><text x={right} y={16} textAnchor="end" fontSize={11} fill="var(--chart-text)">Total {metric}</text>
+      {[0, .25, .5, .75, 1].map(fraction => <g key={fraction}><line x1={left} x2={right} y1={bottom - fraction * (bottom - top)} y2={bottom - fraction * (bottom - top)} stroke="var(--chart-grid)" strokeDasharray="3 5" /><text x={left - 8} y={bottom - fraction * (bottom - top) + 4} textAnchor="end" fontSize={10} fill="var(--chart-text)">{number(monthlyMax * fraction)}</text><text x={right + 8} y={bottom - fraction * (bottom - top) + 4} fontSize={10} fill="var(--chart-text)">{number(cumulativeMax * fraction)}</text></g>)}
       {data.map((month, index) => {
         let base = bottom
         const select = () => setSelectedKey(month.key)
         return <g key={month.key} tabIndex={0} role="button" aria-label={`${monthLabel(month.date)}: ${number(month.total)} ${metric}, ${month.records.length} sessions, ${month.ranks.length} rank milestones`} aria-pressed={selected?.key === month.key} onMouseEnter={select} onFocus={select} onClick={select} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select() } }} className="journey-month">
-          <rect x={left + index * slot} y={top} width={slot} height={bottom - top} fill={selected?.key === month.key ? '#f1f1f1' : 'transparent'} />
+          <rect x={left + index * slot} y={top} width={slot} height={bottom - top} fill={selected?.key === month.key ? 'var(--chart-hover)' : 'transparent'} />
           {month.values.map((value, styleIndex) => { const barHeight = value / monthlyMax * (bottom - top); base -= barHeight; return <rect key={styles[styleIndex]} x={x(index) - slot * .3} y={base} width={slot * .6} height={barHeight} fill={colors[styles[styleIndex]]} /> })}
-          {(data.length < 20 || index % 3 === 0) && <text x={x(index)} y={247} textAnchor="middle" fontSize={10} fill="#71717a">{month.date.toLocaleDateString('en-GB', { month: 'short' })}</text>}
-          {(index === 0 || month.date.getMonth() === 0) && <text x={x(index)} y={269} textAnchor="middle" fontSize={12} fontWeight={650} fill="#3f3f46">{month.date.getFullYear()}</text>}
+          {(data.length < 20 || index % 3 === 0) && <text x={x(index)} y={247} textAnchor="middle" fontSize={10} fill="var(--chart-text)">{month.date.toLocaleDateString('en-GB', { month: 'short' })}</text>}
+          {(index === 0 || month.date.getMonth() === 0) && <text x={x(index)} y={269} textAnchor="middle" fontSize={12} fontWeight={650} fill="var(--chart-text)">{month.date.getFullYear()}</text>}
           <title>{`${monthLabel(month.date)}: ${number(month.total)} ${metric}; running total ${number(month.cumulative)} ${metric}`}</title>
         </g>
       })}
