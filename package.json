@@ -12,6 +12,7 @@
                     "test:accounts":  "node --test tests/cloudModel.test.mjs tests/cloudStorage.test.mjs",
                     "test:requests":  "node --test tests/cloudStorage.test.mjs tests/emailOperation.test.mjs tests/wrappedEmail.test.mjs",
                     "test:requests:browser":  "node scripts/verify-request-optimization.mjs",
+                    "test:overview:browser":  "node scripts/verify-overview-transition.mjs",
                     "deploy:cloudflare":  "npm run build \u0026\u0026 wrangler deploy",
                     "preview:cloudflare":  "npm run build \u0026\u0026 wrangler dev"
                 },

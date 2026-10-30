@@ -1,5 +1,5 @@
 import { trackEvent } from './lib/firebase'
-import { lazy, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from 'react'
+import { lazy, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
 import Papa from 'papaparse'
 import type { CsvImport } from './lib/importStorage'
 import {
@@ -33,6 +33,9 @@ import ManualLog from './components/ManualLog'
 import DemoToggle from './components/DemoToggle'
 
 import LazyPage from './components/LazyPage'
+import OverviewSetup from './components/OverviewSetup'
+import CountUp, { countHours, countMinutes } from './components/CountUp'
+import { useOverviewReveal } from './lib/useOverviewReveal'
 
 import { ranksFromCsvRows, normalizeRankHistory, type RankPromotion } from './lib/rankHistory'
 import { PromotionSummary } from './components/RankContext'
@@ -127,6 +130,8 @@ function App() {
   const allocation = useMemo(() => allocateTrainingStyles(sourceSessions), [sourceSessions])
   const sessions = allocation.sessions
   const [activePage, setActivePage] = useState<Page>(pageFromPath)
+  const overviewDashboard = useRef<HTMLDivElement>(null)
+  useOverviewReveal(overviewDashboard, activePage === 'overview', demoEnabled)
   const trackedPage = useRef<string | null>(null)
   useEffect(() => {
     if (trackedPage.current === activePage) return
@@ -245,7 +250,7 @@ function App() {
       return
     }
     setDemoLoading(true)
-    setUploadMessage('Loading demo data… Click the demo toggle again to cancel.')
+    setUploadMessage('Loading demo data…')
     try {
       const { default: demoCsv } = await import('../demodata/gymdesk-all-attendance-2026-10-03.csv?raw')
       if (request !== demoRequest.current) return
@@ -347,9 +352,9 @@ function App() {
       </aside>
 
       <main className="main-area">
-        <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><strong>{activePage === 'wrapped' ? 'Year Wrapped' : activePage === 'log' ? 'Log training' : activePage === 'overview' ? 'Overview' : activePage === 'sessions' ? 'Sessions' : activePage === 'instructions' ? 'Get your CSV' : '3D Data Lab'}</strong></div><div className="top-actions">{csvImport && !demoEnabled && <div className="current-csv" title={`${csvImport.fileName} — ${demoEnabled ? 'Demo preview' : workspace.cloud ? 'Saved to your account' : savedLocally ? 'Saved only in this browser' : 'Session only'}`}><FileSpreadsheet size={15} /><span className="current-csv-name">{csvImport.fileName}</span>{!user && !demoEnabled && <button className="current-csv-remove" aria-label={`Remove ${csvImport.fileName} and delete its saved data`} title="Remove CSV and delete saved data" disabled={!workspace.ready || workspace.busy} onClick={() => void removeFile()}><X size={14} /></button>}</div>}{!user && <DemoToggle enabled={demoEnabled} prompt={workspace.ready && !savedCsvImport && manualSessions.length === 0 && !demoEnabled} onToggle={toggleDemo} />}{!demoEnabled && <span className="sync-status"><span className="status-dot" /> {workspace.cloud ? workspace.status : csvImport || manualData.initialized ? 'Saved in this browser' : 'No training data'}</span>}<button className="icon-button" aria-label="CSV export instructions" onClick={() => goToPage('instructions')}><CircleHelp size={17} /></button><button className="icon-button theme-toggle" aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} aria-pressed={theme === 'dark'} onClick={toggleTheme}>{theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}</button><button className="top-avatar account-avatar-button" aria-label="Open profile" onClick={() => setAccountOpen(true)}>{(user?.displayName || 'B').slice(0, 1).toUpperCase()}</button></div></header>
+        <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><strong>{activePage === 'wrapped' ? 'Year Wrapped' : activePage === 'log' ? 'Log training' : activePage === 'overview' ? 'Overview' : activePage === 'sessions' ? 'Sessions' : activePage === 'instructions' ? 'Get your CSV' : '3D Data Lab'}</strong></div><div className="top-actions">{csvImport && !demoEnabled && <div className="current-csv" title={`${csvImport.fileName} — ${demoEnabled ? 'Demo preview' : workspace.cloud ? 'Saved to your account' : savedLocally ? 'Saved only in this browser' : 'Session only'}`}><FileSpreadsheet size={15} /><span className="current-csv-name">{csvImport.fileName}</span>{!user && !demoEnabled && <button className="current-csv-remove" aria-label={`Remove ${csvImport.fileName} and delete its saved data`} title="Remove CSV and delete saved data" disabled={!workspace.ready || workspace.busy} onClick={() => void removeFile()}><X size={14} /></button>}</div>}{!user && <DemoToggle enabled={demoEnabled} prompt={workspace.ready && !savedCsvImport && manualSessions.length === 0 && !demoEnabled} onToggle={toggleDemo} />}<span className="sync-status" style={demoEnabled ? { visibility: 'hidden' } : undefined} aria-hidden={demoEnabled}><span className="status-dot" /> {workspace.cloud ? workspace.status : savedCsvImport || manualData.initialized ? 'Saved in this browser' : 'No training data'}</span><button className="icon-button" aria-label="CSV export instructions" onClick={() => goToPage('instructions')}><CircleHelp size={17} /></button><button className="icon-button theme-toggle" aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} aria-pressed={theme === 'dark'} onClick={toggleTheme}>{theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}</button><button className="top-avatar account-avatar-button" aria-label="Open profile" onClick={() => setAccountOpen(true)}>{(user?.displayName || 'B').slice(0, 1).toUpperCase()}</button></div></header>
         <div className={`content${activePage === 'overview' ? ' overview-content' : ''}`}>
-          <OverviewSetup key={activePage + (csvImport ? '-imported' : '-empty')} collapsed={activePage === 'overview' && !!csvImport}>
+          <OverviewSetup key={activePage} collapsed={activePage === 'overview' && !!csvImport}>
           {user && !user.emailVerified && <div className="account-banner"><p>Verify your email to save training to your account. You’re currently using this browser’s guest data.</p><button className="button button-outline" onClick={() => setAccountOpen(true)}>Verify email</button></div>}
           {workspace.cloud && workspace.hasGuestData && <div className="account-banner"><p>This browser has guest training data. Import it into your account? Existing account records will be kept.</p><button className="button button-primary" disabled={!workspace.ready || workspace.busy} onClick={() => void workspace.importGuest()}>Import browser data</button><button className="button button-outline" disabled={workspace.busy} onClick={workspace.dismissGuest}>Not now</button></div>}
           {workspace.cloud && !workspace.ready && <div className="account-banner"><p>Connecting to your account. Training changes are available once the cloud connection is ready.</p><button className="button button-outline" disabled={workspace.busy} onClick={workspace.retry}>Retry connection</button></div>}
@@ -379,7 +384,7 @@ function App() {
 
           </div>}
           </OverviewSetup>
-          <div inert={workspace.busy || (activePage === 'log' && !workspace.ready)}>
+          <div ref={overviewDashboard} inert={workspace.busy || (activePage === 'log' && !workspace.ready)}>
           <LazyPage key={activePage}>
           {activePage === 'wrapped' ? <YearWrapped sessions={sessions} sample={demoEnabled} profileEmail={user?.email} /> : activePage === 'log' ? <ManualLog key={user?.uid ?? 'guest'} sessions={manualSessions} error={manualData.error} cloud={workspace.cloud} onSave={async row => {
             const editing = manualSessions.some(item => row.cloudId ? item.cloudId === row.cloudId : item.id === row.id)
@@ -389,10 +394,10 @@ function App() {
           }} onDelete={deleteManual} /> : activePage === 'instructions' ? <InstructionsPage /> : activePage === 'dev' ? <DevPage sessions={sessions} ranks={rankHistory} /> : activePage === 'overview' ? <>
             <div className="overview-dashboard-heading"><h2>Your training in focus</h2><span>Consistency, progress, and time on the mat</span></div>
             <div className="stats-grid">
-              <article className="stat-card"><div className="stat-top"><span>Total sessions</span><span className="stat-icon green"><Dumbbell size={16} /></span></div><div className="stat-value">{filteredSessions.length}<span className="stat-unit">sessions</span></div><div className="stat-foot"><span className="stat-accent"><ArrowUpRight size={13} /> Keep showing up</span><span>since you started</span></div></article>
-              <article className="stat-card"><div className="stat-top"><span>Time on the mat</span><span className="stat-icon purple"><Clock3 size={16} /></span></div><div className="stat-value">{Math.floor(metrics.minutes / 60)}<span className="stat-unit">h</span> {metrics.minutes % 66}<span className="stat-unit">m</span></div><div className="stat-foot"><span>Avg. {formatDuration(metrics.average)}</span><span>per session</span></div></article>
-              <article className="stat-card"><div className="stat-top"><span>This month</span><span className="stat-icon orange"><Flame size={16} /></span></div><div className="stat-value">{metrics.thisMonth}<span className="stat-unit">sessions</span></div><div className="stat-foot"><span>{new Intl.DateTimeFormat('en', { month: 'long' }).format(newest)}</span><span>{newest.getFullYear()}</span></div></article>
-              <article className="stat-card"><div className="stat-top"><span>Favorite style</span><span className="stat-icon blue"><Users size={16} /></span></div><div className="stat-value stat-word">{metrics.mostFrequent}</div><div className="stat-foot"><span>{metrics.gi} Gi · {metrics.noGi} No-Gi</span><span>sessions</span></div></article>
+              <article className="stat-card"><div className="stat-top"><span>Total sessions</span><span className="stat-icon green"><Dumbbell size={16} /></span></div><div className="stat-value"><CountUp value={filteredSessions.length} /><span className="stat-unit">sessions</span></div><div className="stat-foot"><span className="stat-accent"><ArrowUpRight size={13} /> Keep showing up</span><span>since you started</span></div></article>
+              <article className="stat-card"><div className="stat-top"><span>Time on the mat</span><span className="stat-icon purple"><Clock3 size={16} /></span></div><div className="stat-value"><CountUp value={metrics.minutes} format={countHours} /><span className="stat-unit">h</span> <CountUp value={metrics.minutes} format={countMinutes} minDigits={2} /><span className="stat-unit">m</span></div><div className="stat-foot"><span>Avg. <CountUp value={metrics.average} format={formatDuration} /></span><span>per session</span></div></article>
+              <article className="stat-card"><div className="stat-top"><span>This month</span><span className="stat-icon orange"><Flame size={16} /></span></div><div className="stat-value"><CountUp value={metrics.thisMonth} /><span className="stat-unit">sessions</span></div><div className="stat-foot"><span>{new Intl.DateTimeFormat('en', { month: 'long' }).format(newest)}</span><span>{newest.getFullYear()}</span></div></article>
+              <article className="stat-card"><div className="stat-top"><span>Favorite style</span><span className="stat-icon blue"><Users size={16} /></span></div><div className="stat-value stat-word">{metrics.mostFrequent}</div><div className="stat-foot"><span><CountUp value={metrics.gi} /> Gi · <CountUp value={metrics.noGi} /> No-Gi</span><span>sessions</span></div></article>
             </div>
 
             <ChartFrame title="Training calendar"><TrainingCalendar ranks={rankHistory} sessions={sessions} year={selectedYear} years={availableYears} onYearChange={setAnnualYear} styleFilter={styleFilter} query={query} /></ChartFrame>
@@ -438,11 +443,6 @@ function App() {
       {accountOpen && <AccountModal onClose={() => setAccountOpen(false)} pending={workspace.busy} recordsReady={workspace.ready} recordsError={workspace.error} onDeleteRecords={workspace.deleteAllRecords} />}
     </div>
   )
-}
-
-function OverviewSetup({ collapsed, children }: { collapsed: boolean; children: ReactNode }) {
-  if (!collapsed) return <>{children}</>
-  return <details className="overview-setup"><summary><span>Overview settings &amp; training data</span><ChevronDown size={16} aria-hidden="true" /></summary><div className="overview-setup-content">{children}</div></details>
 }
 
 function SessionTable({ sessions }: { sessions: Session[] }) {
