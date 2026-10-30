@@ -3,9 +3,6 @@ import { gsap } from 'gsap'
 
 const integer = (value: number) => String(value)
 
-export const countHours = (minutes: number) => String(Math.floor(minutes / 60))
-export const countMinutes = (minutes: number) => String(minutes % 60)
-
 export default function CountUp({ value, format = integer, minDigits = 0 }: {
   value: number
   format?: (value: number) => string
@@ -25,10 +22,13 @@ export default function CountUp({ value, format = integer, minDigits = 0 }: {
       const counter = { value: 0 }
       render(0)
       // Update this text node directly; the dashboard does not re-render per tick.
-      gsap.to(counter, {
-        value: target, duration: 1.1, delay: .08, ease: 'power2.out',
+      const tween = gsap.to(counter, {
+        value: target, paused: true, duration: 1.1, delay: .08, ease: 'power2.out',
         onUpdate: () => render(counter.value), onComplete: () => render(target),
       })
+      // Start against a fresh frame after the data/chart render has completed.
+      const frame = requestAnimationFrame(() => tween.play(0))
+      return () => cancelAnimationFrame(frame)
     })
     return () => motion.revert()
   }, [target, format])

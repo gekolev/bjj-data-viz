@@ -2,13 +2,13 @@ import { Component, createRef, useId, type ReactNode } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { gsap } from 'gsap'
 
-type Props = { collapsed: boolean; children: ReactNode; contentId: string }
-type State = { collapsed: boolean; expanded: boolean }
-type Layout = { height: number; marginBottom: number; hadToggle: boolean; containedFocus: boolean } | null
+type Props = { panel: boolean; hasData: boolean; loadRevision: number; children: ReactNode; contentId: string }
+type State = { panel: boolean; hasData: boolean; loadRevision: number; expanded: boolean }
+type Layout = { height: number; marginBottom: number; containedFocus: boolean } | null
 
 // Measure before React changes the DOM, including any interrupted animation.
 class AnimatedOverviewSetup extends Component<Props, State> {
-  state: State = { collapsed: this.props.collapsed, expanded: !this.props.collapsed }
+  state: State = { panel: this.props.panel, hasData: this.props.hasData, loadRevision: this.props.loadRevision, expanded: !this.props.panel || !this.props.hasData }
   private host = createRef<HTMLElement>()
   private content = createRef<HTMLDivElement>()
   private toggle = createRef<HTMLButtonElement>()
@@ -17,7 +17,8 @@ class AnimatedOverviewSetup extends Component<Props, State> {
   private motion?: MediaQueryList
 
   static getDerivedStateFromProps(props: Props, state: State): Partial<State> | null {
-    return props.collapsed === state.collapsed ? null : { collapsed: props.collapsed, expanded: !props.collapsed }
+    if (props.panel === state.panel && props.hasData === state.hasData && props.loadRevision === state.loadRevision) return null
+    return { panel: props.panel, hasData: props.hasData, loadRevision: props.loadRevision, expanded: !props.panel || !props.hasData }
   }
 
   componentDidMount() {
@@ -33,10 +34,10 @@ class AnimatedOverviewSetup extends Component<Props, State> {
   }
 
   getSnapshotBeforeUpdate(previous: Props, state: State): Layout {
-    if (previous.collapsed === this.props.collapsed && state.expanded === this.state.expanded) return null
+    if (previous.panel === this.props.panel && state.expanded === this.state.expanded) return null
     const host = this.host.current
     if (!host) return null
-    return { height: host.getBoundingClientRect().height, marginBottom: parseFloat(getComputedStyle(host).marginBottom) || 0, hadToggle: previous.collapsed, containedFocus: !!this.content.current?.contains(document.activeElement) }
+    return { height: host.getBoundingClientRect().height, marginBottom: parseFloat(getComputedStyle(host).marginBottom) || 0, containedFocus: !!this.content.current?.contains(document.activeElement) }
   }
 
   componentDidUpdate(_previous: Props, _state: State, layout: Layout) {
@@ -70,17 +71,16 @@ class AnimatedOverviewSetup extends Component<Props, State> {
       } else {
         this.timeline.to(content, { opacity: 0, y: -6, duration: .16, ease: 'power1.out' }, 0)
       }
-      if (!layout.hadToggle && this.props.collapsed) this.timeline.fromTo(toggle, { opacity: 0 }, { opacity: 1, duration: .25 }, .2)
     }, host)
   }
 
   private finish = () => { this.timeline?.progress(1) }
 
   render() {
-    const { collapsed, children, contentId } = this.props
+    const { panel, children, contentId } = this.props
     const { expanded } = this.state
-    return <section ref={this.host} className={`overview-setup-region${collapsed ? ' overview-setup' : ''}`} data-expanded={expanded}>
-      <button ref={this.toggle} type="button" className="overview-setup-toggle" hidden={!collapsed} aria-expanded={expanded} aria-controls={contentId} onClick={() => this.setState({ expanded: !expanded })}>
+    return <section ref={this.host} className={`overview-setup-region${panel ? ' overview-setup' : ''}`} data-expanded={expanded}>
+      <button ref={this.toggle} type="button" className="overview-setup-toggle" hidden={!panel} aria-expanded={expanded} aria-controls={contentId} onClick={() => this.setState({ expanded: !expanded })}>
         <span>Overview settings &amp; training data</span><ChevronDown size={16} aria-hidden="true" />
       </button>
       <div ref={this.content} id={contentId} className="overview-setup-content" hidden={!expanded} inert={!expanded} aria-hidden={!expanded}>{children}</div>
