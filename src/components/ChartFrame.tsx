@@ -1,3 +1,4 @@
+import { trackEvent } from '../lib/firebase'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Maximize2, Play, X } from 'lucide-react'
 import { ChartModalContext } from './ChartModalContext'
@@ -22,6 +23,7 @@ export default function ChartFrame({ title, children }: { title: string; childre
   }, [expanded])
 
   const open = () => {
+    trackEvent('chart_expand', { chart_name: title })
     setHeight(frame.current?.offsetHeight ?? 0)
     dialog.current?.showModal()
     setModalContainer(dialog.current)
@@ -29,6 +31,7 @@ export default function ChartFrame({ title, children }: { title: string; childre
   }
 
   const replayAnimation = () => {
+    trackEvent('chart_replay', { chart_name: title })
     setReplay(value => value + 1)
     // Custom SVG and calendar plots use a staggered reveal instead of Recharts.
     const marks = dialog.current?.querySelectorAll('.training-timeline-svg circle, .contribution-day, .three-canvas')
@@ -47,7 +50,7 @@ export default function ChartFrame({ title, children }: { title: string; childre
     <dialog ref={dialog} className="chart-dialog" role={expanded ? 'dialog' : 'group'} aria-modal={expanded || undefined} aria-label={expanded ? undefined : title} aria-labelledby={expanded ? titleId : undefined} onClose={() => { setExpanded(false); trigger.current?.focus() }}>
       <div className="chart-modal-toolbar"><h2 id={titleId}>{title}</h2><div className="chart-modal-actions"><button className="chart-replay" aria-label={`Replay ${title} animation`} onClick={replayAnimation}><Play size={18} /><span>Replay animation</span></button><button className="chart-close" aria-label={`Close ${title}`} onClick={() => dialog.current?.close()}><X size={20} /><span>Close</span></button></div></div>
       <button ref={trigger} className="chart-expand" aria-label={`Expand ${title}`} title="Open full screen" onClick={open}><Maximize2 size={15} /></button>
-      <ChartModalContext.Provider value={expanded ? modalContainer : null}><ChartAnimationContext.Provider value={replay}><div className="chart-frame-content">{children}</div></ChartAnimationContext.Provider></ChartModalContext.Provider>
+      <ChartModalContext.Provider value={expanded ? modalContainer : null}><ChartAnimationContext.Provider value={replay}><div className="chart-frame-content" onClickCapture={() => trackEvent('chart_interaction', { chart_name: title, interaction_type: 'click' })} onChangeCapture={() => trackEvent('chart_interaction', { chart_name: title, interaction_type: 'change' })}>{children}</div></ChartAnimationContext.Provider></ChartModalContext.Provider>
     </dialog>
   </div>
 }

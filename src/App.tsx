@@ -1,3 +1,4 @@
+import { trackEvent } from './lib/firebase'
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
 import Papa from 'papaparse'
 import demoCsv from '../demodata/gymdesk-all-attendance-2026-10-03.csv?raw'
@@ -142,6 +143,12 @@ function App() {
   const allocation = useMemo(() => allocateTrainingStyles(sourceSessions), [sourceSessions])
   const sessions = allocation.sessions
   const [activePage, setActivePage] = useState<Page>(pageFromPath)
+  const trackedPage = useRef<string | null>(null)
+  useEffect(() => {
+    if (trackedPage.current === activePage) return
+    trackedPage.current = activePage
+    trackEvent('page_visit', { page_name: activePage })
+  }, [activePage])
   const [period, setPeriod] = useState('All time')
   const [annualYear, setAnnualYear] = useState(new Date().getFullYear())
   const [query, setQuery] = useState('')
@@ -254,7 +261,9 @@ function App() {
   const handleFiles = (files: FileList | null) => {
     const file = files?.[0]
     if (!file || workspace.busy || !workspace.ready) return
+    trackEvent('csv_import_started')
     if (!file.name.toLowerCase().endsWith('.csv')) {
+      trackEvent('csv_import_failed', { reason: 'invalid_file_type' })
       setUploadMessage('Please choose a .csv file.')
       return
     }
@@ -262,11 +271,12 @@ function App() {
     setUploadMessage(`Reading ${file.name}...`)
     sessionsFromCsv(file, async (rows, error, ranks = [], skippedRanks = 0) => {
       if (request !== importRequest.current) return
-      if (error) setUploadMessage(error)
+      if (error) { trackEvent('csv_import_failed', { reason: 'parse_error' }); setUploadMessage(error) }
       else {
         const nextImport = { fileName: file.name, sessions: rows, ranks }
-        if (!await importCsv(nextImport)) { setUploadMessage('CSV could not be saved. Please try again.'); return }
+        if (!await importCsv(nextImport)) { trackEvent('csv_import_failed', { reason: 'save_failed' }); setUploadMessage('CSV could not be saved. Please try again.'); return }
         if (request !== importRequest.current) return
+        trackEvent('csv_import_succeeded', { session_count: rows.length, rank_count: ranks.length, skipped_rank_count: skippedRanks })
         setDemoImport(null)
         if (rows.length) setAnnualYear(Math.max(...rows.map((row) => row.date.getFullYear())))
         setUploadMessage(`${rows.length} sessions and ${ranks.length} rank records imported from ${file.name}${skippedRanks ? ` (${skippedRanks} rank records skipped: missing rank or invalid date)` : ''}`)
@@ -349,7 +359,7 @@ function App() {
           {uploadMessage && uploadMessage.includes('Please') || uploadMessage.startsWith('No sessions') || uploadMessage.startsWith('We couldn’t') ? <div className="upload-error"><X size={14} />{uploadMessage}</div> : null}
 
           {storageMessage && <div className="storage-message" role="alert">{storageMessage}</div>}
-          {(allocation.estimatedCount > 0 || allocation.unknownCount > 0) && <div className="style-estimate-note" role="status">{allocation.estimatedCount > 0 ? `${allocation.estimatedCount} unclassified sessions distributed proportionally using the known Gi / No-Gi split (${Math.round((allocation.giShare ?? 0) * 100)}% / ${Math.round((1 - (allocation.giShare ?? 0)) * 100)}%). Estimated styles are included throughout the dashboard.` : `${allocation.unknownCount} sessions remain unclassified: no known Gi or No-Gi records are available to calculate a ratio.`}</div>}
+          {(activePage === 'overview' || activePage === 'sessions') && (allocation.estimatedCount > 0 || allocation.unknownCount > 0) && <div className="style-estimate-note" role="status">{allocation.estimatedCount > 0 ? `${allocation.estimatedCount} unclassified sessions distributed proportionally using the known Gi / No-Gi split (${Math.round((allocation.giShare ?? 0) * 100)}% / ${Math.round((1 - (allocation.giShare ?? 0)) * 100)}%). Estimated styles are included throughout the dashboard.` : `${allocation.unknownCount} sessions remain unclassified: no known Gi or No-Gi records are available to calculate a ratio.`}</div>}
           </details>
           <div inert={!workspace.ready || workspace.busy}>
           {activePage === 'wrapped' ? <YearWrapped sessions={sessions} sample={demoEnabled} profileEmail={user?.email} /> : activePage === 'log' ? <ManualLog key={user?.uid ?? 'guest'} sessions={manualSessions} error={manualData.error} cloud={workspace.cloud} onSave={row => updateManual([...manualSessions.filter(item => row.cloudId ? item.cloudId !== row.cloudId : item.id !== row.id), row])} onDelete={deleteManual} /> : activePage === 'instructions' ? <InstructionsPage /> : activePage === 'dev' ? <DevPage sessions={sessions} ranks={rankHistory} /> : activePage === 'overview' ? <>

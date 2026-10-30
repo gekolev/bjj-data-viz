@@ -1,3 +1,4 @@
+import { trackEvent } from '../lib/firebase'
 import { useState, type FormEvent } from 'react'
 import { Clock3, Plus } from 'lucide-react'
 import type { ManualSession } from '../lib/manualStorage'
@@ -42,10 +43,11 @@ export default function ManualLog({ sessions, error, cloud = false, onSave, onDe
     if (rounds !== undefined && (!Number.isInteger(rounds) || rounds < 0 || rounds > 100)) { setMessage('Choose between 0 and 100 sparring rounds.'); return }
     const type = classType.trim() || 'Training'
     const record: ManualSession = { cloudId: editingRecord?.cloudId, cloudRevision: editingRecord?.cloudRevision, id: editing ?? Math.max(Date.now(), ...sessions.map(row => row.id + 1)), date: parsed, duration: minutes, style, classType: type, venue: venue.trim(), instructor: instructor.trim(), notes: notes.trim(), training: type + ' - ' + (style === 'NoGi' ? 'No-Gi' : 'Gi') + (venue.trim() ? ' - ' + venue.trim() : ''), timeRecorded: true, rounds, effort, focus }
+    trackEvent('manual_session_save_started', { action: editing === null ? 'create' : 'edit', storage: cloud ? 'account' : 'browser' })
     setSaving(true)
     try {
-    if (await onSave(record)) { setMessage(editing === null ? cloud ? 'Training saved to your account. Your dashboard is updated.' : 'Training saved on this device. Your dashboard is updated.' : 'Training updated.'); setEditing(null); setEditingRecord(null); setNotes(''); setRounds(undefined); setEffort(''); setFocus([]); setDate(today()); setTime(defaultTime()); setExactTime(false); setCustomRounds(false); setDetails(false) }
-    } finally { setSaving(false) }
+    if (await onSave(record)) { trackEvent('manual_session_saved', { action: editing === null ? 'create' : 'edit', storage: cloud ? 'account' : 'browser' }); setMessage(editing === null ? cloud ? 'Training saved to your account. Your dashboard is updated.' : 'Training saved on this device. Your dashboard is updated.' : 'Training updated.'); setEditing(null); setEditingRecord(null); setNotes(''); setRounds(undefined); setEffort(''); setFocus([]); setDate(today()); setTime(defaultTime()); setExactTime(false); setCustomRounds(false); setDetails(false) } else { trackEvent('manual_session_save_failed', { reason: 'save_rejected' }) }
+    } catch { trackEvent('manual_session_save_failed', { reason: 'save_error' }); setMessage('Training could not be saved. Please try again.') } finally { setSaving(false) }
   }
   const edit = (row: ManualSession) => {
     setExactTime(!!row.timeRecorded); setCustomDuration(![45, 60, 90, 120].includes(row.duration)); setCustomRounds(row.rounds !== undefined && ![0, 3, 5, 6, 8, 10].includes(row.rounds)); setEditingRecord(row); setEditing(row.id); setTime(row.timeRecorded ? String(row.date.getHours()).padStart(2, '0') + ':' + String(row.date.getMinutes()).padStart(2, '0') : defaultTime()); setRounds(row.rounds); setEffort(row.effort ?? ''); setFocus(row.focus ?? []); setDate([row.date.getFullYear(), String(row.date.getMonth() + 1).padStart(2, '0'), String(row.date.getDate()).padStart(2, '0')].join('-')); setStyle(row.style === 'NoGi' ? 'NoGi' : 'Gi'); setDuration(String(row.duration)); setClassType(row.classType); setVenue(row.venue); setInstructor(row.instructor); setNotes(row.notes); setDetails(true); setMessage(''); window.scrollTo({ top: 0, behavior: 'smooth' })

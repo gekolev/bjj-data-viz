@@ -23,12 +23,29 @@ export const firebaseApp = getApps().length ? getApp() : initializeApp(firebaseC
 export const auth = getAuth(firebaseApp)
 export const db = getFirestore(firebaseApp)
 
-// Analytics is optional: unsupported browsers must still be able to use the app.
-export async function initializeAnalytics(): Promise<void> {
+// Share initialization so early events wait for Analytics to become available.
+let analyticsReady: Promise<import('firebase/analytics').Analytics | null> | undefined
+const analytics = () => analyticsReady ??= (async () => {
   try {
     const { getAnalytics, isSupported } = await import('firebase/analytics')
-    if (await isSupported()) getAnalytics(firebaseApp)
-  } catch (error) {
-    console.warn('Firebase Analytics could not be initialized.', error)
+    return await isSupported() ? getAnalytics(firebaseApp) : null
+  } catch {
+    return null
   }
+})()
+
+export async function initializeAnalytics(): Promise<void> {
+  await analytics()
+}
+
+/** Send only curated metadata; never pass user text, filenames, or CSV contents. */
+export function trackEvent(name: string, params: Record<string, string | number | boolean> = {}): void {
+  void (async () => {
+    try {
+      const instance = await analytics()
+      if (!instance) return
+      const { logEvent } = await import('firebase/analytics')
+      logEvent(instance, name, params)
+    } catch { /* Analytics must never interrupt a user action. */ }
+  })()
 }
