@@ -7,6 +7,7 @@ const cardContentId = (year, index) => `wrapped-${year}-card-${index + 1}`
 function providerFailure(status, detail) {
   const message = typeof detail?.message === 'string' ? detail.message.toLowerCase() : ''
   const name = typeof detail?.name === 'string' ? detail.name : ''
+  if (status === 409) return { status: 409, code: 'email_retry_conflict', error: 'This email operation is already being processed or its contents changed. Wait a moment before retrying the same recap.' }
   if (status === 401 || /api key is (invalid|not active|suspended)|missing api key/.test(message)) return { status: 503, code: 'email_credentials', error: 'The production email API key is invalid or inactive. Update RESEND_API_KEY in Cloudflare Worker secrets.' }
   if (/only send testing emails|resend\.dev/.test(message)) return { status: 503, code: 'email_test_sender', error: 'Resend’s test sender can only email the Resend account owner. Set WRAPPED_EMAIL_FROM in Cloudflare to an address on your verified Resend domain to email other recipients.' }
   if (/domain.*(not verified|not.*verified)|verify.*domain/.test(message)) return { status: 503, code: 'email_sender_domain', error: 'The production sender domain is not verified in Resend. Verify it and update WRAPPED_EMAIL_FROM in Cloudflare.' }
@@ -48,6 +49,9 @@ function emailHtml(year, summary) {
 export async function handleEmail(request, env, send = fetch) {
   if (request.method !== 'POST') return json({ error: 'Use POST to send a recap.' }, 405)
   if (request.headers.get('Origin') !== new URL(request.url).origin) return json({ error: 'Request origin is not allowed.' }, 403)
+  const operation = request.headers.get('Idempotency-Key')
+  // Optional for compatibility with an already-open client from the previous deployment.
+  if (operation !== null && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(operation)) return json({ error: 'Invalid email operation ID.' }, 400)
   if (!env.RESEND_API_KEY || !env.WRAPPED_EMAIL_FROM) return json({ error: 'Email sending is not configured yet. You can still download your cards.' }, 503)
   if (!env.WRAPPED_EMAIL_LIMITER) return json({ error: 'Email sending is temporarily unavailable.' }, 503)
   const ip = request.headers.get('CF-Connecting-IP') || 'local'
@@ -92,7 +96,7 @@ export async function handleEmail(request, env, send = fetch) {
   try {
     const response = await send('https://api.resend.com/emails', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${env.RESEND_API_KEY.trim()}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${env.RESEND_API_KEY.trim()}`, 'Content-Type': 'application/json', ...(operation ? { 'Idempotency-Key': `wrapped/${operation}` } : {}) },
       body: JSON.stringify({
         from: env.WRAPPED_EMAIL_FROM.trim(), to: [email], subject: `Your ${year} year on the mat`,
         text: `Your ${year} MatMetrics Wrapped is here!\n\nThese are the highlights of your training: the time you put in, how you trained, and your standout moments.\n\n${summaryText(year, summary)}\n\nTHE WORK YOU PUT IN\nYour sessions, training days, and mat time.\n\nHOW YOU TRAINED\nYour training styles, busiest month, weekly rhythm, and streak.\n\nYOUR TRAINING HIGHLIGHTS\nYour go-to class, coaches, and biggest training day.\n\nAll nine recap cards are attached as PNG images to save and share.\n\nKeep showing up. See you on the mat.\n\nYou received this one-time email because someone requested a training recap at MatMetrics.`,

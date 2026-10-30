@@ -21,7 +21,7 @@ Unverified users continue using guest browser data. Verified users use a separat
 
 ## Data model
 
-- users/{uid}: displayName and updatedAt. Passwords remain in Firebase Authentication.
+- users/{uid}: legacy profile documents may contain displayName and updatedAt. The app reads the name from Firebase Authentication and no longer writes a Firestore profile when connecting. Training records do not require a parent profile document. Passwords remain in Firebase Authentication.
 - users/{uid}/records/{recordId}: kind (manual, imported, rank), data, fileName, revision, deleted, updatedAt.
 - CSV sessions and promotions have content-derived IDs, independent of CSV row order.
 - New manual sessions use UUID record IDs. Numeric IDs are retained only for compatibility with the existing UI.

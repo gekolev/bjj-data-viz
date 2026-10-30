@@ -3,7 +3,6 @@ import WrappedViewer from './components/WrappedViewer'
 import { animateWrappedCard } from './lib/wrappedAnimation'
 import { ArrowUpRight, Flame, Sparkles, Download, GraduationCap, Trophy, Layers, Play } from 'lucide-react'
 import './YearWrapped.css'
-import { emailRecap, exportRecap, exportRecapCard } from './lib/exportRecap'
 import { buildArrivalSummary } from './lib/trainingJourney'
 import { chooseWrappedPalettes, emailWrappedPalettes, wrappedPaletteStyle } from './lib/wrappedPalettes'
 
@@ -93,10 +92,11 @@ export default function YearWrapped({ sessions, sample, profileEmail }: { sessio
     try {
       const latest = rows.reduce((last, row) => row.date > last ? row.date : last, rows[0].date)
       const latestTraining = `${latest.getFullYear()}-${String(latest.getMonth() + 1).padStart(2, '0')}-${String(latest.getDate()).padStart(2, '0')}`
+      const { emailRecap } = await import('./lib/exportRecap')
       await emailRecap(gridRef.current, year, email.trim(), {
         latestTraining, sessions: rows.length, minutes, trainingDays: dates.length, sample,
         estimated: rows.some(row => row.durationEstimated || row.styleEstimated),
-      }, (count, total) => setEmailMessage(`Preparing card ${count} of ${total}...`))
+      }, JSON.stringify({ rows, palettes }), (count, total) => setEmailMessage(`Preparing card ${count} of ${total}...`))
       setEmailMessage(`Your ${year} Wrapped has been submitted for delivery to ${email.trim()}. Check your inbox and spam folder.`)
     } catch (error) {
       setEmailMessage(error instanceof Error ? error.message : 'Email could not be sent. Please try again.')
@@ -112,6 +112,7 @@ export default function YearWrapped({ sessions, sample, profileEmail }: { sessio
     setSavingCard(index)
     setExportMessage(`Preparing card ${index + 1}...`)
     try {
+      const { exportRecapCard } = await import('./lib/exportRecap')
       await exportRecapCard(card, year, index)
       setExportMessage(`Card ${index + 1} is ready as a PNG image.`)
     } catch (error) {
@@ -127,6 +128,7 @@ export default function YearWrapped({ sessions, sample, profileEmail }: { sessio
     setSaving(true)
     setExportMessage('Preparing your card images...')
     try {
+      const { exportRecap } = await import('./lib/exportRecap')
       await exportRecap(gridRef.current, year, (count, total) => setExportMessage(`Creating card ${count} of ${total}...`))
       setExportMessage('Your ZIP download is ready, with one PNG image per card.')
     } catch (error) {

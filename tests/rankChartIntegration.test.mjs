@@ -8,6 +8,8 @@ import ts from 'typescript'
 // Load real TSX components without a browser; verify rendered chart semantics.
 const modules = new Map()
 function compiledUrl(file) {
+  // Keep chart semantics tests independent of Vite env and browser Firebase.
+  if (file.pathname.endsWith('/src/lib/firebase.ts')) return 'data:text/javascript,export function trackEvent() {}'
   if (modules.has(file.href)) return modules.get(file.href)
   const { outputText } = ts.transpileModule(readFileSync(file, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.ReactJSX },

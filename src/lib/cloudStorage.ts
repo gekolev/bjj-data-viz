@@ -1,7 +1,13 @@
-import { collection, doc, onSnapshot, query, runTransaction, serverTimestamp, setDoc, Timestamp, where } from 'firebase/firestore'
-import type { User } from 'firebase/auth'
+import { collection, doc, onSnapshot, query, runTransaction, serverTimestamp, Timestamp, where } from 'firebase/firestore'
 import { auth, db } from './firebase'
 import { decodeRecord, type Change, type CloudRecords } from './cloudModel'
+
+const diagnostics = { listenerStarts: 0, listenerStops: 0, serverSnapshots: 0, documentsDelivered: 0, transactionAttempts: 0, writesAttempted: 0, cacheWrites: 0 }
+function count(key: keyof typeof diagnostics, amount = 1) {
+  if (import.meta.env?.DEV) diagnostics[key] += amount
+}
+/** Local development counters only; contains no account IDs or training data. */
+export const getCloudDiagnostics = () => ({ ...diagnostics })
 
 const cacheKey = (uid: string) => 'matmetrics-account-v1-' + uid
 export function loadCloudCache(uid: string): CloudRecords {
@@ -14,27 +20,60 @@ export function loadCloudCache(uid: string): CloudRecords {
   } catch { return {} }
 }
 export function saveCloudCache(uid: string, records: CloudRecords): boolean {
+  count('cacheWrites')
   try { localStorage.setItem(cacheKey(uid), JSON.stringify({ version: 1, records })); return true } catch { return false }
 }
-export function subscribeRecords(uid: string, cached: CloudRecords, next: (records: CloudRecords, fromCache: boolean) => void, fail: (error: unknown) => void) {
-  const timestamps = Object.values(cached).map(r => r.updatedAt).sort((a, b) => b.seconds - a.seconds || b.nanoseconds - a.nanoseconds)
+export function subscribeRecords(uid: string, cached: CloudRecords, next: (records: CloudRecords, fromCache: boolean, changed: boolean) => void, fail: (error: unknown) => void) {
+  const latest = Object.values(cached).reduce<CloudRecords[string]['updatedAt'] | null>((latest, record) => {
+    const timestamp = record.updatedAt
+    return !latest || timestamp.seconds > latest.seconds || (timestamp.seconds === latest.seconds && timestamp.nanoseconds > latest.nanoseconds) ? timestamp : latest
+  }, null)
   const records = collection(db, 'users', uid, 'records')
   // Inclusive cursor safely replays rows sharing the most recent commit timestamp.
-  const source = timestamps.length ? query(records, where('updatedAt', '>=', new Timestamp(timestamps[0].seconds, timestamps[0].nanoseconds))) : records
-  const merged = { ...cached }
-  return onSnapshot(source, { includeMetadataChanges: true }, snapshot => {
+  const source = latest ? query(records, where('updatedAt', '>=', new Timestamp(latest.seconds, latest.nanoseconds))) : records
+  let merged = { ...cached }
+  count('listenerStarts')
+  const stop = onSnapshot(source, { includeMetadataChanges: true }, snapshot => {
     try {
       if (snapshot.metadata.hasPendingWrites) return
-      for (const change of snapshot.docChanges()) {
+      const changes = snapshot.docChanges()
+      if (!snapshot.metadata.fromCache) { count('serverSnapshots'); count('documentsDelivered', changes.length) }
+      let changed = false
+      for (const change of changes) {
         // Soft deletion records stay in the query and carry deletion to other devices.
-        if (change.type !== 'removed') merged[change.doc.id] = decodeRecord(change.doc.data())
+        if (change.type === 'removed') continue
+        const record = decodeRecord(change.doc.data())
+        // A cached SDK snapshot must not roll back the durable account snapshot.
+        if (record.revision <= (merged[change.doc.id]?.revision ?? 0)) continue
+        if (!changed) merged = { ...merged }
+        merged[change.doc.id] = record
+        changed = true
       }
-      next({ ...merged }, snapshot.metadata.fromCache)
+      next(merged, snapshot.metadata.fromCache, changed)
     } catch (error) { fail(error) }
   }, fail)
+  let stopped = false
+  return () => { if (!stopped) { stopped = true; count('listenerStops'); stop() } }
 }
-export async function saveProfile(user: User) {
-  await setDoc(doc(db, 'users', user.uid), { displayName: (user.displayName ?? '').slice(0, 80), updatedAt: serverTimestamp() }, { merge: true })
+/** Coalesce import snapshots; the records and their timestamp cursor stay atomic. */
+export function createCloudCacheWriter(uid: string, warning: (failed: boolean) => void) {
+  let pending: CloudRecords | null = null
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const flush = () => {
+    clearTimeout(timer); timer = undefined
+    if (!pending) return
+    const next = pending
+    pending = null
+    warning(!saveCloudCache(uid, next))
+  }
+  return {
+    schedule(records: CloudRecords) {
+      pending = records
+      // Do not reset the timer: continuous imports still flush every 250 ms.
+      timer ??= setTimeout(flush, 250)
+    },
+    flush,
+  }
 }
 export async function commitChanges(uid: string, changes: Change[]) {
   // Keep each transaction well below Firestore's request-size limit.
@@ -42,6 +81,7 @@ export async function commitChanges(uid: string, changes: Change[]) {
     if (auth.currentUser?.uid !== uid || !auth.currentUser.emailVerified) throw new Error('Account changed during save')
     const group = changes.slice(offset, offset + 100)
     await runTransaction(db, async transaction => {
+      count('transactionAttempts')
       const refs = group.map(change => doc(db, 'users', uid, 'records', change.id))
       const current = await Promise.all(refs.map(ref => transaction.get(ref)))
       // Firestore transactions require all reads before any writes.
@@ -50,6 +90,7 @@ export async function commitChanges(uid: string, changes: Change[]) {
         if (change.onlyIfMissing && snapshot.exists()) return
         const existing = snapshot.exists() ? decodeRecord(snapshot.data()) : null
         if ((existing?.revision ?? 0) !== change.expectedRevision) throw new Error('Conflict: this record changed on another device. Your change was not saved. Review the latest data and try again.')
+        count('writesAttempted')
         transaction.set(refs[index], { kind: change.kind, data: change.data, fileName: change.fileName, deleted: change.deleted, revision: change.expectedRevision + 1, updatedAt: serverTimestamp() })
       })
     })

@@ -2,6 +2,8 @@
 
 This project is a Vite frontend served by the `bjj-data-viz` Cloudflare Worker. Wrangler serves `dist` as static assets. SPA fallback supports direct visits to `/log`, `/sessions`, `/dev`, and `/instructions`.
 
+`public/_headers` is copied into the build: fingerprinted `/assets/*` files use one-year immutable browser caching, HTML/SPA routes revalidate, and stable icons use a one-hour TTL. Keep unversioned files outside `/assets/`. The email API sets `no-store` in Worker code. See [optimization validation](request-optimization-validation.md) for checks and the installed local runtime's compatibility-date limitation.
+
 ## Local development
 
 Copy `.env.example` to `.env.local` and set `VITE_FIREBASE_API_KEY` to the Firebase browser key. Use `npm run dev`. The existing local configuration is preserved.

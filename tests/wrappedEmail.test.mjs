@@ -108,3 +108,37 @@ test('distinguishes provider connection failures from timeouts', async () => {
   assert.equal(response.status, 504)
   assert.equal((await response.json()).code, 'email_timeout')
 })
+
+test('retries forward the same idempotency key and unchanged payload to the provider', async () => {
+  const key = 'ea8e1e8f-c1c4-453d-9163-123456789abc'
+  const requests = [], accepted = new Map()
+  const provider = async (_, options) => {
+    requests.push(options)
+    const id = options.headers['Idempotency-Key']
+    if (!accepted.has(id)) accepted.set(id, options.body)
+    else assert.equal(options.body, accepted.get(id))
+    return Response.json({ id: 'one-send' })
+  }
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const response = await handleEmail(request(payload(), { 'Idempotency-Key': key }), env, provider)
+    assert.equal(response.status, 200)
+    assert.equal(response.headers.get('Cache-Control'), 'no-store')
+  }
+  assert.equal(accepted.size, 1)
+  assert.equal(requests[0].headers['Idempotency-Key'], `wrapped/${key}`)
+})
+
+test('invalid retry IDs are rejected before any provider send', async () => {
+  let sends = 0
+  for (const key of ['bad', 'a'.repeat(300), '00000000-0000-0000-0000-000000000000']) {
+    const response = await handleEmail(request(payload(), { 'Idempotency-Key': key }), env, async () => { sends++; return Response.json({ id: 'sent' }) })
+    assert.equal(response.status, 400)
+  }
+  assert.equal(sends, 0)
+})
+
+test('provider idempotency conflicts produce a retry-specific response', async () => {
+  const response = await handleEmail(request(), env, async () => Response.json({ name: 'invalid_idempotent_request' }, { status: 409 }))
+  assert.equal(response.status, 409)
+  assert.equal((await response.json()).code, 'email_retry_conflict')
+})

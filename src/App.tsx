@@ -1,7 +1,6 @@
 import { trackEvent } from './lib/firebase'
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from 'react'
+import { lazy, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from 'react'
 import Papa from 'papaparse'
-import demoCsv from '../demodata/gymdesk-all-attendance-2026-10-03.csv?raw'
 import type { CsvImport } from './lib/importStorage'
 import {
   Activity, ArrowDownToLine, ArrowUpRight, Box, CalendarDays,
@@ -15,8 +14,6 @@ import {
 } from 'recharts'
 import './App.css'
 import { useTheme } from './lib/useTheme'
-import DevPage from './DevPage'
-import YearWrapped from './YearWrapped'
 import TrainingCalendar from './TrainingCalendar'
 import ChartFrame from './components/ChartFrame'
 import ResponsiveContainer from './components/ResponsiveChart'
@@ -27,8 +24,6 @@ import TrainingTimeChart from './components/TrainingTimeChart'
 import { AnimatedArea as Area, AnimatedBar as Bar, AnimatedLine as Line, AnimatedPie as Pie } from './components/AnimatedChartSeries'
 import { allocateTrainingStyles } from './lib/allocateTrainingStyles'
 import { parseSession } from './lib/sessionParser'
-import InstructionsPage from './InstructionsPage'
-import PitchPage from './PitchPage'
 import ContactFooter from './components/ContactFooter'
 import { useTrainingWorkspace } from './lib/useTrainingWorkspace'
 import { useAccount } from './components/AccountContext'
@@ -37,8 +32,15 @@ import SessionBrowser from './components/SessionBrowser'
 import ManualLog from './components/ManualLog'
 import DemoToggle from './components/DemoToggle'
 
+import LazyPage from './components/LazyPage'
+
 import { ranksFromCsvRows, normalizeRankHistory, type RankPromotion } from './lib/rankHistory'
 import { PromotionSummary } from './components/RankContext'
+
+const DevPage = lazy(() => import('./DevPage'))
+const YearWrapped = lazy(() => import('./YearWrapped'))
+const InstructionsPage = lazy(() => import('./InstructionsPage'))
+const PitchPage = lazy(() => import('./PitchPage'))
 
 type Session = {
   id: number
@@ -230,20 +232,33 @@ function App() {
     { name: 'Other', value: filteredSessions.filter((session) => session.style === 'Other').length },
   ].filter((slice) => slice.value > 0)
 
-  const toggleDemo = () => {
+  const demoRequest = useRef(0)
+  const [demoLoading, setDemoLoading] = useState(false)
+  useEffect(() => () => { demoRequest.current++ }, [])
+  const toggleDemo = async () => {
     if (user) return
+    const request = ++demoRequest.current
+    if (demoLoading) { setDemoLoading(false); setUploadMessage('Demo loading cancelled.'); return }
     if (demoEnabled) {
       setDemoImport(null)
       setUploadMessage('Demo data turned off. Your training data has been restored.')
       return
     }
-    sessionsFromCsv(new File([demoCsv], 'gymdesk-all-attendance-2026-10-03.csv', { type: 'text/csv' }), (rows, error, ranks = []) => {
-      if (error) { setUploadMessage(error); return }
-      setDemoImport({ fileName: 'Demo data', sessions: rows, ranks })
-      setQuery(''); setStyleFilter('All styles'); setPeriod('All time')
-      if (rows.length) setAnnualYear(Math.max(...rows.map(row => row.date.getFullYear())))
-      setUploadMessage('')
-    })
+    setDemoLoading(true)
+    setUploadMessage('Loading demo data… Click the demo toggle again to cancel.')
+    try {
+      const { default: demoCsv } = await import('../demodata/gymdesk-all-attendance-2026-10-03.csv?raw')
+      if (request !== demoRequest.current) return
+      sessionsFromCsv(new File([demoCsv], 'gymdesk-all-attendance-2026-10-03.csv', { type: 'text/csv' }), (rows, error, ranks = []) => {
+        if (request !== demoRequest.current) return
+        if (error) { setUploadMessage(error); return }
+        setDemoImport({ fileName: 'Demo data', sessions: rows, ranks })
+        setQuery(''); setStyleFilter('All styles'); setPeriod('All time')
+        if (rows.length) setAnnualYear(Math.max(...rows.map(row => row.date.getFullYear())))
+        setUploadMessage('')
+      })
+    } catch { if (request === demoRequest.current) setUploadMessage('Demo data couldn’t load. Please try again.') }
+    finally { if (request === demoRequest.current) setDemoLoading(false) }
   }
 
   const handleFiles = (files: FileList | null) => {
@@ -300,7 +315,7 @@ function App() {
     URL.revokeObjectURL(link.href)
   }
 
-  if (activePage === 'welcome') return <><PitchPage onExplore={() => goToPage('overview')} onLog={() => goToPage('log')} /><ContactFooter /></>
+  if (activePage === 'welcome') return <><LazyPage><PitchPage onExplore={() => goToPage('overview')} onLog={() => goToPage('log')} /></LazyPage><ContactFooter /></>
 
   return (
     <div className={`app-shell${sidebarCollapsed ? ' sidebar-collapsed' : ''}`} onDragOver={(event) => { event.preventDefault(); setDragging(true) }} onDragLeave={(event) => { if (event.currentTarget === event.target) setDragging(false) }} onDrop={onDrop}>
@@ -337,7 +352,8 @@ function App() {
           <OverviewSetup key={activePage + (csvImport ? '-imported' : '-empty')} collapsed={activePage === 'overview' && !!csvImport}>
           {user && !user.emailVerified && <div className="account-banner"><p>Verify your email to save training to your account. You’re currently using this browser’s guest data.</p><button className="button button-outline" onClick={() => setAccountOpen(true)}>Verify email</button></div>}
           {workspace.cloud && workspace.hasGuestData && <div className="account-banner"><p>This browser has guest training data. Import it into your account? Existing account records will be kept.</p><button className="button button-primary" disabled={!workspace.ready || workspace.busy} onClick={() => void workspace.importGuest()}>Import browser data</button><button className="button button-outline" disabled={workspace.busy} onClick={workspace.dismissGuest}>Not now</button></div>}
-          {workspace.cloud && !workspace.ready && <div className="account-banner"><p>Connecting to your account. Training changes are available once the cloud connection is ready.</p><button className="button button-outline" onClick={workspace.retry}>Retry connection</button></div>}
+          {workspace.cloud && !workspace.ready && <div className="account-banner"><p>Connecting to your account. Training changes are available once the cloud connection is ready.</p><button className="button button-outline" disabled={workspace.busy} onClick={workspace.retry}>Retry connection</button></div>}
+          {workspace.cloud && <button className="button button-ghost" disabled={workspace.busy} onClick={workspace.resync}>Refresh full history</button>}
           {workspace.cacheWarning && <div className="account-banner"><p>{workspace.cacheWarning}</p></div>}
           <div className="page-heading" inert={!workspace.ready || workspace.busy}><div><div className="eyebrow"><span className="eyebrow-dot" /> YOUR JIU-JITSU JOURNEY</div><h1>{activePage === 'wrapped' ? 'Your year on the mat' : activePage === 'log' ? 'Log your training' : activePage === 'overview' ? 'Training overview' : activePage === 'sessions' ? 'Training sessions' : activePage === 'instructions' ? 'Get your training data' : '3D Data Lab'}</h1><p>A little progress every day adds up to a lot.</p></div><div className="heading-actions">{activePage !== 'log' && <button className="button button-primary manual-entry-button" onClick={() => goToPage('log')}><Dumbbell size={16} /> Log training</button>}{activePage === 'instructions' && <button className="button button-outline" onClick={downloadTemplate}><ArrowDownToLine size={15} /> Template</button>}<button className="button button-primary" onClick={() => fileRef.current?.click()}><Upload size={15} /> Import CSV</button><input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFileChange} hidden /></div></div>
 
@@ -351,7 +367,7 @@ function App() {
           {storageMessage && <div className="storage-message" role="alert">{storageMessage}</div>}
           {(activePage === 'overview' || activePage === 'sessions') && (allocation.estimatedCount > 0 || allocation.unknownCount > 0) && <div className="style-estimate-note" role="status">{allocation.estimatedCount > 0 ? `${allocation.estimatedCount} unclassified sessions distributed proportionally using the known Gi / No-Gi split (${Math.round((allocation.giShare ?? 0) * 100)}% / ${Math.round((1 - (allocation.giShare ?? 0)) * 100)}%). Estimated styles are included throughout the dashboard.` : `${allocation.unknownCount} sessions remain unclassified: no known Gi or No-Gi records are available to calculate a ratio.`}</div>}
           </details>
-          {activePage === 'overview' && <div inert={!workspace.ready || workspace.busy}>
+          {activePage === 'overview' && <div>
             <section className="overview-period-bar" aria-label="Overview period filter">
               <div className="overview-period-controls">
                 <div><div className="section-title"><span className="live-dot" /> AT A GLANCE</div><strong className="overview-period-title">Overview period</strong></div>
@@ -363,7 +379,8 @@ function App() {
 
           </div>}
           </OverviewSetup>
-          <div inert={!workspace.ready || workspace.busy}>
+          <div inert={workspace.busy || (activePage === 'log' && !workspace.ready)}>
+          <LazyPage key={activePage}>
           {activePage === 'wrapped' ? <YearWrapped sessions={sessions} sample={demoEnabled} profileEmail={user?.email} /> : activePage === 'log' ? <ManualLog key={user?.uid ?? 'guest'} sessions={manualSessions} error={manualData.error} cloud={workspace.cloud} onSave={async row => {
             const editing = manualSessions.some(item => row.cloudId ? item.cloudId === row.cloudId : item.id === row.id)
             const saved = await updateManual([...manualSessions.filter(item => row.cloudId ? item.cloudId !== row.cloudId : item.id !== row.id), row])
@@ -402,6 +419,7 @@ function App() {
             <section className="panel sessions-panel">
               <div className="panel-heading sessions-heading"><div><h2>Recent sessions</h2><span className="chart-period-label"><CalendarDays size={12} />Period: {period}</span><p>A record of time well spent</p></div><button className="button button-ghost" onClick={() => goToPage('sessions')}>View all <ArrowUpRight size={14} /></button></div><div className="table-tools"><label className="search-field"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sessions..." /></label><label className="filter-select"><Filter size={14} /><select value={styleFilter} onChange={(event) => setStyleFilter(event.target.value)}><option>All styles</option><option>Gi</option><option>NoGi</option></select><ChevronDown size={13} /></label></div><SessionTable sessions={filteredSessions.slice(0, 5)} /><div className="table-footer"><span>Showing {Math.min(filteredSessions.length, 5)} of {filteredSessions.length} sessions</span><button onClick={() => goToPage('sessions')}>See all sessions <ArrowUpRight size={13} /></button></div></section>
           </> : <SessionBrowser key={csvImport?.fileName ?? 'empty'} sessions={sessions} initialQuery={query} initialStyle={styleFilter} renderTable={rows => <SessionTable sessions={rows} />} />}
+          </LazyPage>
           </div>
         </div>
         <ContactFooter />

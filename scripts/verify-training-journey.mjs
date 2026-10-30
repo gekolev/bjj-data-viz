@@ -13,6 +13,8 @@ const require = createRequire(import.meta.url)
 const loadedModules = new Map()
 function load(relative) {
   const filename = path.resolve(relative)
+  // Chart rendering does not need browser Firebase configuration or Analytics.
+  if (filename === path.resolve('src/lib/firebase.ts')) return { trackEvent() {} }
   if (loadedModules.has(filename)) return loadedModules.get(filename)
   const output = ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2023, jsx: ts.JsxEmit.ReactJSX } }).outputText
   const module = { exports: {} }

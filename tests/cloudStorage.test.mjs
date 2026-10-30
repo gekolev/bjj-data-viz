@@ -51,6 +51,78 @@ test('incremental subscriptions include the newest timestamp and keep deletion m
  stop(); assert.equal(sdk.listener, null);
 });
 
+test('metadata-only snapshots preserve identity and advance readiness without a content change', () => {
+ const results = [];
+ const stop = storage.subscribeRecords('alice', { a: record(2) }, (rows, cached, changed) => results.push({ rows, cached, changed }), error => { throw error; });
+ const snapshot = (cached, changes = [], pending = false) => ({ metadata: { hasPendingWrites: pending, fromCache: cached }, docChanges: () => changes });
+ sdk.listener(snapshot(true, [{ type: 'added', doc: { id: 'a', data: () => record(1) } }]));
+ sdk.listener(snapshot(false));
+ assert.equal(results.length, 2);
+ assert.equal(results[0].rows.a.revision, 2);
+ assert.equal(results[0].rows, results[1].rows);
+ assert.equal(results[1].cached, false);
+ assert.equal(results[1].changed, false);
+ sdk.listener(snapshot(false, [], true));
+ assert.equal(results.length, 2);
+ sdk.listener(snapshot(false, [{ type: 'modified', doc: { id: 'a', data: () => record(3, { deleted: true }) } }]));
+ assert.notEqual(results[2].rows, results[1].rows);
+ assert.equal(results[1].rows.a.deleted, false);
+ assert.equal(results[2].rows.a.deleted, true);
+ assert.equal(results[2].changed, true);
+ stop(); stop();
+});
+
+test('inclusive replay retains all records sharing a timestamp and never applies query removals as deletions', () => {
+ let result;
+ const stop = storage.subscribeRecords('alice', { a: record() }, rows => { result = rows; }, error => { throw error; });
+ sdk.listener({ metadata: { hasPendingWrites: false, fromCache: false }, docChanges: () => [
+   { type: 'added', doc: { id: 'b', data: () => record() } },
+   { type: 'removed', doc: { id: 'a' } },
+ ] });
+ assert.deepEqual(Object.keys(result).sort(), ['a', 'b']);
+ assert.equal(result.a.deleted, false);
+ stop();
+});
+
+test('cache writes coalesce atomically and remain isolated by account', async t => {
+ t.mock.timers.enable({ apis: ['setTimeout'] });
+ const saved = new Map(), writes = [], warnings = [];
+ const original = globalThis.localStorage;
+ globalThis.localStorage = { getItem: key => saved.get(key), setItem: (key, value) => { saved.set(key, value); writes.push(key); } };
+ try {
+   const alice = storage.createCloudCacheWriter('alice', failed => warnings.push(failed));
+   const bob = storage.createCloudCacheWriter('bob', failed => warnings.push(failed));
+   alice.schedule({ a: record() });
+   alice.schedule({ a: record(2), b: record() });
+   bob.schedule({ other: record(4) });
+   assert.equal(writes.length, 0);
+   t.mock.timers.tick(250);
+   assert.equal(writes.length, 2);
+   assert.deepEqual(Object.keys(storage.loadCloudCache('alice')), ['a', 'b']);
+   assert.equal(storage.loadCloudCache('alice').a.revision, 2);
+   assert.deepEqual(Object.keys(storage.loadCloudCache('bob')), ['other']);
+   alice.flush(); assert.equal(writes.length, 2);
+   alice.schedule({ a: record(3) }); alice.flush();
+   assert.equal(storage.loadCloudCache('alice').a.revision, 3);
+   t.mock.timers.tick(250); assert.equal(writes.length, 3);
+   globalThis.localStorage.setItem = () => { throw new Error('Quota'); };
+   alice.schedule({ a: record(4) }); alice.flush();
+   assert.equal(warnings.at(-1), true);
+   assert.equal(storage.loadCloudCache('alice').a.revision, 3);
+ } finally { globalThis.localStorage = original; }
+});
+
+test('corrupt account cache falls back to a complete server query', () => {
+ const original = globalThis.localStorage;
+ globalThis.localStorage = { getItem: () => '{invalid' };
+ try {
+   assert.deepEqual(storage.loadCloudCache('alice'), {});
+   const stop = storage.subscribeRecords('alice', storage.loadCloudCache('alice'), () => {}, error => { throw error; });
+   assert.equal(sdk.lastQuery.condition, undefined);
+   stop();
+ } finally { globalThis.localStorage = original; }
+});
+
 test('manual sessions persist as individual account documents and reload with every detail', async () => {
  const model = await import(modelUrl);
  const manual = { ...session, date: new Date(session.date), notes: 'Practice escapes', timeRecorded: true, rounds: 5, effort: 'Hard', focus: ['Escapes', 'Drilling'] };
