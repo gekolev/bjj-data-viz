@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
 const url = source => 'data:text/javascript;base64,' + Buffer.from(source).toString('base64')
-const sdkUrl = url("export let rows = {}; export let writes = []; export let lastQuery = null; export let listener = null; export let transactionCount = 0;\nexport function reset(next = {}) { rows = { ...next }; writes = []; transactionCount = 0; }\nexport const collection = (_db, ...path) => ({ path: path.join('/') });\nexport const doc = (_db, ...path) => ({ path: path.join('/'), id: path.at(-1) });\nexport const serverTimestamp = () => ({ seconds: 200, nanoseconds: 0 });\nexport class Timestamp { constructor(seconds, nanoseconds) { this.seconds = seconds; this.nanoseconds = nanoseconds; } }\nexport const where = (field, operator, value) => ({ field, operator, value });\nexport const query = (source, condition) => ({ ...source, condition });\nexport const setDoc = async () => {};\nexport function onSnapshot(source, options, next) { lastQuery = source; listener = next; return () => { listener = null }; }\nexport async function runTransaction(_db, callback) {\n transactionCount++; const pending = []; let writing = false;\n const transaction = { get: async ref => { if (writing) throw new Error('Read after write'); const row = rows[ref.id]; return { exists: () => !!row, data: () => row }; }, set: (ref, row) => { writing = true; pending.push([ref.id, row]); } };\n await callback(transaction);\n for (const [id, row] of pending) { rows[id] = row; writes.push([id, row]); }\n}\n")
+const sdkUrl = url("export let rows = {}; export let writes = []; export let lastQuery = null; export let listener = null; export let transactionCount = 0;\nexport function reset(next = {}) { rows = { ...next }; writes = []; transactionCount = 0; }\nexport const collection = (_db, ...path) => ({ path: path.join('/') });\nexport const doc = (_db, ...path) => ({ path: path.join('/'), id: path.at(-1) });\nexport const serverTimestamp = () => ({ seconds: 200, nanoseconds: 0 });\nexport class Timestamp { constructor(seconds, nanoseconds) { this.seconds = seconds; this.nanoseconds = nanoseconds; } }\nexport const where = (field, operator, value) => ({ field, operator, value });\nexport const query = (source, condition) => ({ ...source, condition });\nexport const setDoc = async () => {};\nexport function onSnapshot(source, options, next) { lastQuery = source; listener = next; return () => { listener = null }; }\nexport async function runTransaction(_db, callback) {\n transactionCount++; const pending = []; let writing = false;\n const transaction = { get: async ref => { if (writing) throw new Error('Read after write'); const row = rows[ref.id]; return { exists: () => !!row, data: () => row }; }, set: (ref, row) => { writing = true; pending.push([ref.id, row, ref.path]); } };\n await callback(transaction);\n for (const [id, row, path] of pending) { rows[id] = row; writes.push([id, row, path]); }\n}\n")
 const firebaseUrl = url("export const auth = { currentUser: { uid: 'alice', emailVerified: true } }; export const db = {};\n")
 const sdk = await import(sdkUrl)
 const firebase = await import(firebaseUrl)
@@ -49,4 +49,66 @@ test('incremental subscriptions include the newest timestamp and keep deletion m
  sdk.listener({ metadata: { hasPendingWrites: false, fromCache: false }, docChanges: () => [{ type: 'added', doc: { id: 'a', data: () => record(2, { deleted: true }) } }] });
  assert.equal(result.rows.a.deleted, true); assert.equal(result.rows.b.revision, 1); assert.equal(result.cached, false);
  stop(); assert.equal(sdk.listener, null);
+});
+
+
+test('manual sessions persist as individual account documents and reload with every detail', async () => {
+ const model = await import(modelUrl);
+ const manual = { ...session, date: new Date(session.date), notes: 'Practice escapes', timeRecorded: true, rounds: 5, effort: 'Hard', focus: ['Escapes', 'Drilling'] };
+ sdk.reset();
+ const changes = model.manualChanges([], [manual], {});
+ assert.equal(changes.length, 1);
+ assert.equal(changes[0].kind, 'manual');
+ await storage.commitChanges('alice', changes);
+ const [id, saved, path] = sdk.writes[0];
+ assert.equal(path, 'users/alice/records/' + id);
+ assert.equal(saved.kind, 'manual');
+ assert.equal(saved.revision, 1);
+ const restored = model.workspaceFromRecords(sdk.rows).manualData.sessions[0];
+ assert.equal(restored.cloudId, id);
+ for (const key of ['duration', 'style', 'classType', 'venue', 'instructor', 'notes', 'timeRecorded', 'rounds', 'effort']) assert.equal(restored[key], manual[key]);
+ assert.deepEqual(restored.focus, manual.focus);
+ assert.equal(restored.date.toISOString(), manual.date.toISOString());
+ await storage.commitChanges('alice', model.manualChanges([restored], [{ ...restored, duration: 90 }], sdk.rows));
+ assert.equal(Object.keys(sdk.rows).length, 1);
+ assert.equal(sdk.rows[id].data.duration, 90);
+ assert.equal(sdk.rows[id].revision, 2);
+});
+
+test('CSV sessions and ranks are individual documents and replacement retains manual documents', async () => {
+ const model = await import(modelUrl);
+ sdk.reset();
+ await storage.commitChanges('alice', model.manualChanges([], [{ ...session, date: new Date(session.date) }], {}));
+ const manualId = Object.keys(sdk.rows)[0];
+ const csv = { fileName: 'history.csv', sessions: [{ ...session, date: new Date(session.date) }, { ...session, id: 11, duration: 90, date: new Date(session.date) }], ranks: [{ id: 1, date: new Date(session.date), rank: 'B-1', stripes: 1, discipline: 'BJJ', status: 'Promoted', details: '' }] };
+ await storage.commitChanges('alice', await model.replaceCsvChanges(csv, sdk.rows));
+ assert.equal(Object.keys(sdk.rows).length, 4);
+ assert.ok(sdk.writes.every(([id, , path]) => path === 'users/alice/records/' + id));
+ await storage.commitChanges('alice', await model.replaceCsvChanges({ ...csv, sessions: [csv.sessions[0]], ranks: [] }, sdk.rows));
+ const restored = model.workspaceFromRecords(sdk.rows);
+ assert.equal(restored.csvImport.sessions.length, 1);
+ assert.equal(restored.csvImport.ranks.length, 0);
+ assert.equal(restored.manualData.sessions.length, 1);
+ assert.equal(sdk.rows[manualId].deleted, false);
+});
+
+test('unverified accounts cannot commit records', async () => {
+ sdk.reset(); firebase.auth.currentUser.emailVerified = false;
+ try { await assert.rejects(storage.commitChanges('alice', [change('a')]), /Account changed/); assert.equal(sdk.writes.length, 0); }
+ finally { firebase.auth.currentUser.emailVerified = true; }
+});
+
+test('delete all removes manual, CSV and rank history and preserves existing deletion markers', async () => {
+ const model = await import(modelUrl);
+ sdk.reset({ manual: record(), imported: record(2, { kind: 'imported', fileName: 'history.csv' }), rank: record(3, { kind: 'rank', data: { id: 0, date: session.date, rank: 'B-1', stripes: 1, discipline: 'BJJ', status: 'Promoted', details: '' } }), removed: record(4, { deleted: true }) });
+ const changes = model.deleteAllRecordChanges(sdk.rows);
+ assert.equal(changes.length, 3);
+ assert.ok(changes.every(change => change.deleted));
+ await storage.commitChanges('alice', changes);
+ const workspace = model.workspaceFromRecords(sdk.rows);
+ assert.equal(workspace.csvImport, null);
+ assert.equal(workspace.manualData.sessions.length, 0);
+ assert.equal(sdk.rows.removed.revision, 4);
+ assert.ok(Object.values(sdk.rows).every(row => row.deleted));
+ assert.deepEqual(model.deleteAllRecordChanges(sdk.rows), []);
 });

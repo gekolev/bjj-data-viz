@@ -400,7 +400,7 @@ function App() {
           { page: 'instructions', label: 'Get CSV', icon: BookOpen },
         ] as const).map(({ page, label, icon: Icon }) => <button key={page} className={activePage === page ? 'active' : undefined} aria-current={activePage === page ? 'page' : undefined} onClick={() => { if (activePage !== page) { goToPage(page); window.scrollTo({ top: 0, behavior: 'instant' }) } }}><Icon size={21} aria-hidden="true" /><span>{label}</span></button>)}
       </nav>
-      {accountOpen && <AccountModal onClose={() => setAccountOpen(false)} pending={workspace.busy} />}
+      {accountOpen && <AccountModal onClose={() => setAccountOpen(false)} pending={workspace.busy} recordsReady={workspace.ready} recordsError={workspace.error} onDeleteRecords={workspace.deleteAllRecords} />}
     </div>
   )
 }

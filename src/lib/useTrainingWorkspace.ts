@@ -4,7 +4,7 @@ import { auth } from './firebase'
 import { authError } from './authErrors'
 import { loadCsvImport, removeCsvImport, saveCsvImport, type CsvImport } from './importStorage'
 import { loadManualSessions, saveManualSessions, type ManualSession } from './manualStorage'
-import { canonical, importChanges, manualChanges, replaceCsvChanges, workspaceFromRecords, type Change, type CloudRecords } from './cloudModel'
+import { canonical, deleteAllRecordChanges, importChanges, manualChanges, replaceCsvChanges, workspaceFromRecords, type Change, type CloudRecords } from './cloudModel'
 import { commitChanges, loadCloudCache, saveCloudCache, saveProfile, subscribeRecords } from './cloudStorage'
 
 const guestSignature = () => canonical({ csv: loadCsvImport(), manual: loadManualSessions().sessions })
@@ -91,6 +91,10 @@ export function useTrainingWorkspace() {
     if (!removeCsvImport()) { setError('The saved CSV could not be removed. Allow browser storage access and try again.'); return false }
     setCsvImport(null); setHasGuestData(manualData.sessions.length > 0); setError(''); return true
   }
+  const deleteAllRecords = async () => {
+    if (!uid || !ready || busyRef.current) return false
+    return write(deleteAllRecordChanges(records.current))
+  }
   const importGuest = async () => {
     const guestManual = loadManualSessions()
     if (guestManual.error) { setError(guestManual.error); return }
@@ -100,5 +104,5 @@ export function useTrainingWorkspace() {
       if (uid) try { localStorage.setItem(guestImportKey(uid), guestSignature()) } catch { /* Import succeeded; only the local reminder is unavailable. */ }
     }
   }
-  return { csvImport, manualData, updateManual, deleteManual, importCsv, removeImport, importGuest, hasGuestData, dismissGuest: () => setHasGuestData(false), cloud: !!uid, ready, busy, error, cacheWarning, status, retry: () => setRetry(n => n + 1) }
+  return { deleteAllRecords, csvImport, manualData, updateManual, deleteManual, importCsv, removeImport, importGuest, hasGuestData, dismissGuest: () => setHasGuestData(false), cloud: !!uid, ready, busy, error, cacheWarning, status, retry: () => setRetry(n => n + 1) }
 }

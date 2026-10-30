@@ -7,8 +7,9 @@ import { useAccount } from './AccountContext'
 import './Account.css'
 
 type Mode = 'login' | 'signup' | 'reset'
-export default function AccountModal({ onClose, pending }: { onClose: () => void; pending: boolean }) {
+export default function AccountModal({ onClose, pending, onDeleteRecords, recordsReady, recordsError }: { onClose: () => void; pending: boolean; onDeleteRecords: () => Promise<boolean>; recordsReady: boolean; recordsError: string }) {
   const { user, refresh } = useAccount()
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [mode, setMode] = useState<Mode>('signup')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -53,6 +54,13 @@ export default function AccountModal({ onClose, pending }: { onClose: () => void
         {!user.emailVerified ? <><p><Mail size={17} /> Open the verification link in your inbox, then check your status below.</p><button className="button button-primary" disabled={busy} onClick={() => void run(async () => { await refresh(); setMessage(auth.currentUser?.emailVerified ? 'Email verified. Your cloud workspace is ready.' : 'Your email is not verified yet. Open the link in your inbox first.') })}>I’ve verified my email</button><button className="button button-outline" disabled={busy} onClick={() => void run(async () => { await sendEmailVerification(user); setMessage('Verification email sent. Check your inbox and spam folder.') })}>Resend verification email</button></> : <p>Your email is verified. Your training is saved to your account when cloud saving succeeds.</p>}
         <button className="button button-outline" disabled={busy} onClick={() => void run(async () => { await sendPasswordResetEmail(auth, user.email!); setMessage('Password reset email sent.') })}>Send password reset email</button>
         <button className="button button-outline" disabled={busy || pending} onClick={() => void run(async () => { await signOut(auth); onClose() })}>Log out</button>
+        {user.emailVerified && <div className="account-delete-records">
+          {!confirmDelete ? <button type="button" className="account-link" disabled={busy || pending || !recordsReady} onClick={() => { setConfirmDelete(true); setMessage(''); setError('') }}>Delete all account records</button> : <div className="account-delete-confirm">
+            <p>Delete all manual sessions, imported sessions, and rank records from your account history? This cannot be undone here. Your profile will remain.</p>
+            <div><button type="button" className="button account-delete-button" disabled={busy || pending || !recordsReady} onClick={() => void run(async () => { if (await onDeleteRecords()) { setConfirmDelete(false); setMessage('All account training records deleted.') } else { setError('Records could not all be deleted. Please retry once your account is connected.') } })}>{busy ? 'Deleting...' : 'Delete all records'}</button><button type="button" className="button button-outline" disabled={busy || pending} onClick={() => setConfirmDelete(false)}>Cancel</button></div>
+            {recordsError && <p className="account-error" role="alert">{recordsError}</p>}
+          </div>}
+        </div>}
         {pending && <small>Wait for the current save to finish before logging out.</small>}
       </div> : <>
         {mode !== 'reset' && <div className="account-tabs"><button disabled={busy} aria-pressed={mode === 'signup'} onClick={() => { setMode('signup'); setError(''); setMessage('') }}>Create profile</button><button disabled={busy} aria-pressed={mode === 'login'} onClick={() => { setMode('login'); setError(''); setMessage('') }}>Log in</button></div>}
