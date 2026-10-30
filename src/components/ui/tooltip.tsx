@@ -4,7 +4,10 @@ import { useContext } from 'react'
 import { ChartModalContext } from '../ChartModalContext'
 
 export const TooltipProvider = TooltipPrimitive.Provider
-export const Tooltip = TooltipPrimitive.Root
+export function Tooltip(props: ComponentProps<typeof TooltipPrimitive.Root>) {
+  const modal = useContext(ChartModalContext)
+  return <TooltipPrimitive.Root key={modal ? 'fullscreen' : 'inline'} {...props} />
+}
 export const TooltipTrigger = TooltipPrimitive.Trigger
 export function TooltipContent({ children, className = '', sideOffset = 6, ...props }: ComponentProps<typeof TooltipPrimitive.Content>) {
   const modal = useContext(ChartModalContext)

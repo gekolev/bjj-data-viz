@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import {
   AreaChart, BarChart, CartesianGrid, Cell, LineChart,
-  PieChart, ResponsiveContainer, Tooltip,
+  PieChart, Tooltip,
 } from 'recharts'
 import './App.css'
 import { useTheme } from './lib/useTheme'
@@ -19,6 +19,7 @@ import DevPage from './DevPage'
 import YearWrapped from './YearWrapped'
 import TrainingCalendar from './TrainingCalendar'
 import ChartFrame from './components/ChartFrame'
+import ResponsiveContainer from './components/ResponsiveChart'
 import { ChartXAxis as XAxis, ChartYAxis as YAxis } from './components/ChartAxes'
 import TrainingTimeline from './components/TrainingTimeline'
 import TrainingJourney from './components/TrainingJourney'

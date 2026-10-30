@@ -18,6 +18,7 @@ export default function ChartFrame({ title, children }: { title: string; childre
   const ownsFullscreen = useRef(false)
   const orientationLocked = useRef(false)
   const openRequest = useRef(0)
+  const overviewScroll = useRef({ x: 0, y: 0 })
   const titleId = useId()
 
   useEffect(() => {
@@ -63,9 +64,10 @@ export default function ChartFrame({ title, children }: { title: string; childre
     if (ownsFullscreen.current) {
       ownsFullscreen.current = false
       if (document.fullscreenElement === document.documentElement) {
-        void document.exitFullscreen().catch(() => {})
+        return document.exitFullscreen().catch(() => {})
       }
     }
+    return Promise.resolve()
   }, [])
 
   useEffect(() => {
@@ -90,6 +92,7 @@ export default function ChartFrame({ title, children }: { title: string; childre
   const open = async () => {
     trackEvent('chart_expand', { chart_name: title })
     setHeight(frame.current?.offsetHeight ?? 0)
+    overviewScroll.current = { x: window.scrollX, y: window.scrollY }
     const request = ++openRequest.current
     const mobile = window.matchMedia('(pointer: coarse) and (max-width: 1000px)').matches
     // Prefer native rotation; the sideways layout covers unsupported browsers.
@@ -118,6 +121,28 @@ export default function ChartFrame({ title, children }: { title: string; childre
     }
   }
 
+  const close = async () => {
+    // Clear layout state together: a closed dialog must never retain sideways
+    // tooltip positioning while the overview is being measured again.
+    setSideways(false)
+    setExpanded(false)
+    setModalContainer(null)
+    dialog.current?.querySelectorAll('canvas').forEach(canvas => {
+      canvas.dispatchEvent(new PointerEvent('pointerleave'))
+    })
+    if (dialog.current) dialog.current.scrollTop = 0
+    const content = dialog.current?.querySelector('.chart-frame-content')
+    if (content) { content.scrollTop = 0; content.scrollLeft = 0 }
+    const releasing = releaseLandscape()
+    const request = openRequest.current
+    await releasing
+    requestAnimationFrame(() => {
+      if (request !== openRequest.current || dialog.current?.open) return
+      trigger.current?.focus({ preventScroll: true })
+      window.scrollTo(overviewScroll.current.x, overviewScroll.current.y)
+    })
+  }
+
   const replayAnimation = () => {
     trackEvent('chart_replay', { chart_name: title })
     setReplay(value => value + 1)
@@ -135,7 +160,7 @@ export default function ChartFrame({ title, children }: { title: string; childre
   }
 
   return <div className="chart-frame" ref={frame} style={expanded ? { minHeight: height } : undefined}>
-    <dialog ref={dialog} className="chart-dialog" data-sideways={sideways || undefined} role={expanded ? 'dialog' : 'group'} aria-modal={expanded || undefined} aria-label={expanded ? undefined : title} aria-labelledby={expanded ? titleId : undefined} onClose={() => { releaseLandscape(); setExpanded(false); trigger.current?.focus() }}>
+    <dialog ref={dialog} className="chart-dialog" data-sideways={sideways || undefined} role={expanded ? 'dialog' : 'group'} aria-modal={expanded || undefined} aria-label={expanded ? undefined : title} aria-labelledby={expanded ? titleId : undefined} onClose={() => void close()}>
       <div className="chart-modal-toolbar"><h2 id={titleId}>{title}</h2><div className="chart-modal-actions"><button className="chart-replay" aria-label={`Replay ${title} animation`} onClick={replayAnimation}><Play size={18} /><span>Replay animation</span></button><button className="chart-close" aria-label={`Close ${title}`} onClick={() => dialog.current?.close()}><X size={20} /><span>Close</span></button></div></div>
       <button ref={trigger} className="chart-expand" aria-label={`Expand ${title}`} title="Open full screen" onClick={open}><Maximize2 size={15} /></button>
       <ChartModalContext.Provider value={expanded ? modalContainer : null}><ChartAnimationContext.Provider value={replay}><div className="chart-frame-content" onClickCapture={() => trackEvent('chart_interaction', { chart_name: title, interaction_type: 'click' })} onChangeCapture={() => trackEvent('chart_interaction', { chart_name: title, interaction_type: 'change' })}>{children}</div></ChartAnimationContext.Provider></ChartModalContext.Provider>

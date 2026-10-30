@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { CalendarDays, Clock3 } from 'lucide-react'
-import { BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip } from 'recharts'
+import { BarChart, CartesianGrid, LabelList, Tooltip } from 'recharts'
+import ResponsiveContainer from './ResponsiveChart'
 import ChartFrame from './ChartFrame'
 import { ChartXAxis as XAxis, ChartYAxis as YAxis } from './ChartAxes'
 import { AnimatedBar as Bar } from './AnimatedChartSeries'
