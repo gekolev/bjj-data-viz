@@ -137,8 +137,8 @@ function App() {
   const manualSessions = manualData.sessions
   const sourceSessions = useMemo(() => {
     const imported = csvImport?.sessions ?? []
-    return [...imported, ...(demoEnabled ? [] : manualSessions)].map((row, id) => ({ ...row, id }))
-  }, [csvImport, manualSessions, demoEnabled])
+    return [...imported, ...manualSessions].map((row, id) => ({ ...row, id }))
+  }, [csvImport, manualSessions])
   const allocation = useMemo(() => allocateTrainingStyles(sourceSessions), [sourceSessions])
   const sessions = allocation.sessions
   const [activePage, setActivePage] = useState<Page>(pageFromPath)
@@ -247,7 +247,7 @@ function App() {
       setDemoImport({ fileName: 'Demo data', sessions: rows, ranks })
       setQuery(''); setStyleFilter('All styles'); setPeriod('All time')
       if (rows.length) setAnnualYear(Math.max(...rows.map(row => row.date.getFullYear())))
-      setUploadMessage('Showing demo data. Turn off Demo data to return to your training.')
+      setUploadMessage('Showing demo data alongside your manual sessions. Turn off Demo data to return to your training.')
     })
   }
 
@@ -339,7 +339,7 @@ function App() {
           {workspace.cloud && workspace.hasGuestData && <div className="account-banner"><p>This browser has guest training data. Import it into your account? Existing account records will be kept.</p><button className="button button-primary" disabled={!workspace.ready || workspace.busy} onClick={() => void workspace.importGuest()}>Import browser data</button><button className="button button-outline" disabled={workspace.busy} onClick={workspace.dismissGuest}>Not now</button></div>}
           {workspace.cloud && !workspace.ready && <div className="account-banner"><p>Connecting to your account. Training changes are available once the cloud connection is ready.</p><button className="button button-outline" onClick={workspace.retry}>Retry connection</button></div>}
           {workspace.cacheWarning && <div className="account-banner"><p>{workspace.cacheWarning}</p></div>}
-          <div className="page-heading" inert={!workspace.ready || workspace.busy}><div><div className="eyebrow"><span className="eyebrow-dot" /> YOUR JIU-JITSU JOURNEY</div><h1>{activePage === 'wrapped' ? 'Your year on the mat' : activePage === 'log' ? 'Log your training' : activePage === 'overview' ? 'Training overview' : activePage === 'sessions' ? 'Training sessions' : activePage === 'instructions' ? 'Get your training data' : '3D Data Lab'}</h1><p>A little progress every day adds up to a lot.</p></div><div className="heading-actions"><button className="button button-primary manual-entry-button" onClick={() => goToPage('log')}><Dumbbell size={16} /> Log training</button>{activePage === 'instructions' && <button className="button button-outline" onClick={downloadTemplate}><ArrowDownToLine size={15} /> Template</button>}<button className="button button-primary" onClick={() => fileRef.current?.click()}><Upload size={15} /> Import CSV</button><input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFileChange} hidden /></div></div>
+          <div className="page-heading" inert={!workspace.ready || workspace.busy}><div><div className="eyebrow"><span className="eyebrow-dot" /> YOUR JIU-JITSU JOURNEY</div><h1>{activePage === 'wrapped' ? 'Your year on the mat' : activePage === 'log' ? 'Log your training' : activePage === 'overview' ? 'Training overview' : activePage === 'sessions' ? 'Training sessions' : activePage === 'instructions' ? 'Get your training data' : '3D Data Lab'}</h1><p>A little progress every day adds up to a lot.</p></div><div className="heading-actions">{activePage !== 'log' && <button className="button button-primary manual-entry-button" onClick={() => goToPage('log')}><Dumbbell size={16} /> Log training</button>}{activePage === 'instructions' && <button className="button button-outline" onClick={downloadTemplate}><ArrowDownToLine size={15} /> Template</button>}<button className="button button-primary" onClick={() => fileRef.current?.click()}><Upload size={15} /> Import CSV</button><input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFileChange} hidden /></div></div>
 
           <details className={activePage === 'overview' ? 'overview-data-details' : 'data-details'} open={activePage === 'overview' ? sessions.length === 0 || !!storageMessage || !!uploadMessage : true}>
             <summary><FileSpreadsheet size={15} /><span>{sessions.length ? `${sessions.length} sessions · ${csvImport?.fileName ?? 'Manually logged training'}` : 'Add your training data'}</span><span className="data-details-label">{sessions.length ? 'Data & import' : 'Upload a CSV to get started'}</span><ChevronDown size={14} /></summary>
@@ -437,7 +437,7 @@ function YearHistoryChart({ data }: { data: { year: string; sessions: number; ho
           </LineChart>
         </ResponsiveContainer>
       </div>
-      <div className="history-summary"><span><span className="bottom-dot" />{totalSessions} sessions across {data.length} {data.length === 1 ? 'year' : 'years'}</span><span>Uses complete calendar years from the CSV</span></div>
+      <div className="history-summary"><span><span className="bottom-dot" />{totalSessions} sessions across {data.length} {data.length === 1 ? 'year' : 'years'}</span><span>Uses complete calendar years from all sessions</span></div>
     </section>
   )
 }
