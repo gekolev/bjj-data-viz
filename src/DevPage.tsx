@@ -1,3 +1,4 @@
+import { chartCoordinates } from './lib/chartCoordinates'
 import ChartFrame from './components/ChartFrame'
 import SessionSpiral from './SessionSpiral'
 import type { RankPromotion } from './lib/rankHistory'
@@ -182,8 +183,8 @@ export default function DevPage({ sessions, ranks = [] }: { sessions: Session[];
     const raycaster = new THREE.Raycaster()
     const pointer = new THREE.Vector2()
     const hitAt = (event: PointerEvent) => {
-      const rect = renderer.domElement.getBoundingClientRect()
-      pointer.set((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1)
+      const point = chartCoordinates(renderer.domElement, event.clientX, event.clientY)
+      pointer.set(point.x / renderer.domElement.offsetWidth * 2 - 1, -point.y / renderer.domElement.offsetHeight * 2 + 1)
       raycaster.setFromCamera(pointer, camera)
       return raycaster.intersectObject(mesh)[0]?.instanceId
     }
@@ -199,11 +200,9 @@ export default function DevPage({ sessions, ranks = [] }: { sessions: Session[];
       const height = day.sessions.length ? 0.12 + day.minutes / 120 * 0.42 : 0.065
       ring.position.set(day.week * gap, height - 0.08, day.weekday * gap)
       ring.visible = true
-      const rect = host.getBoundingClientRect()
-      const scaleX = rect.width / host.clientWidth
-      const scaleY = rect.height / host.clientHeight
+      const local = chartCoordinates(host, event.clientX, event.clientY)
       const expanded = host.closest('dialog')?.open
-      setHover({ day, x: Math.min((event.clientX - rect.left) / scaleX + 16, Math.max(8, host.clientWidth - (expanded ? 310 : 210))), y: Math.max(8, (event.clientY - rect.top) / scaleY - (expanded ? 140 : 85)) })
+      setHover({ day, x: Math.min(local.x + 16, Math.max(8, host.clientWidth - (expanded ? 310 : 210))), y: Math.max(8, local.y - (expanded ? 140 : 85)) })
       renderer.domElement.style.cursor = 'pointer'
     }
     let down = { x: 0, y: 0 }

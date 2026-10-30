@@ -1,3 +1,4 @@
+import { chartCoordinates } from './lib/chartCoordinates'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
@@ -156,8 +157,8 @@ export default function SessionSpiral({ sessions, ranks = [] }: { sessions: Sess
     const raycaster = new THREE.Raycaster()
     const pointer = new THREE.Vector2()
     const hit = (event: PointerEvent) => {
-      const rect = renderer.domElement.getBoundingClientRect()
-      pointer.set((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1)
+      const point = chartCoordinates(renderer.domElement, event.clientX, event.clientY)
+      pointer.set(point.x / renderer.domElement.offsetWidth * 2 - 1, -point.y / renderer.domElement.offsetHeight * 2 + 1)
       raycaster.setFromCamera(pointer, camera)
       return raycaster.intersectObject(beads)[0]?.instanceId ?? null
     }

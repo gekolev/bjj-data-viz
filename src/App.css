@@ -309,3 +309,70 @@ body.fill-screen{zoom:var(--screen-scale,1);min-height:calc(100vh / var(--screen
 @keyframes success-toast-enter{from{opacity:0;translate:0 -8px}to{opacity:1;translate:0 0}}
 @media(max-width:560px){.success-toast{top:max(12px,env(safe-area-inset-top,0px));padding:18px;gap:10px}.success-toast strong{font-size:18px}.success-toast>button{flex-basis:44px;min-height:44px}}
 @media(prefers-reduced-motion:reduce){.success-toast{animation:none}}
+
+/* Native landscape keeps chart pointer coordinates and tooltip placement intact. */
+
+@media(pointer:coarse) and (max-height:600px) and (orientation:landscape), (pointer:coarse) and (max-width:1000px) and (orientation:portrait){
+  .chart-dialog[open]{padding:8px max(12px,env(safe-area-inset-right)) 8px max(12px,env(safe-area-inset-left));gap:8px;--modal-text:13px}
+  .chart-dialog[open] .chart-modal-toolbar{gap:12px}
+  .chart-dialog[open] .chart-modal-toolbar h2{font-size:18px}
+  .chart-dialog[open] :is(.chart-close,.chart-replay){min-height:44px;padding:8px 12px;font-size:13px}
+  .chart-dialog[open] .chart-replay span{display:none}
+  .chart-dialog[open] :is(.panel,.ui-card){padding:12px}
+  .chart-dialog[open] :is(.panel-heading,.ui-card-header){margin-bottom:6px;gap:8px}
+  .chart-dialog[open] :is(.panel-heading h2,.ui-card-title){font-size:18px}
+  .chart-dialog[open] :is(.panel-heading p,.ui-card-description){margin:3px 0;font-size:13px}
+  .chart-dialog[open] .chart-explanation{display:none}
+  .chart-dialog[open] .chart-legend{gap:14px;margin:4px 0}
+  .chart-dialog[open] :is(.activity-chart,.insight-chart,.instructor-chart,.year-history-chart,.training-time-chart,.training-timeline-chart,.calendar-stage){min-height:180px}
+  .chart-dialog[open] :is(.journey-scroll,.journey-scroll svg){min-height:220px}
+  .chart-dialog[open] .donut-wrap{min-height:160px}
+  .chart-dialog[open] .style-row{padding:4px 0}
+  .chart-dialog[open] :is(.chart-bottom,.insight-foot,.history-summary){margin-top:6px}
+  .chart-dialog[open] .year-select{height:36px;padding:4px 8px}
+  .chart-dialog[open] .year-select select{font-size:16px}
+}
+
+/* Force a landscape canvas even when the browser cannot rotate the screen. */
+.chart-dialog[open][data-sideways="true"]{
+  inset:auto;top:0;left:100vw;
+  width:100dvh;height:100dvw;
+  transform-origin:top left;transform:rotate(90deg);
+  padding:8px max(12px,env(safe-area-inset-bottom)) 8px max(12px,env(safe-area-inset-top));
+}
+.chart-dialog[data-sideways="true"] [data-radix-popper-content-wrapper]{
+  position:fixed!important;inset:64px 12px auto auto!important;transform:none!important;min-width:0!important;
+}
+.chart-dialog[data-sideways="true"] .recharts-tooltip-wrapper{
+  transform:none!important;left:auto!important;right:8px;top:8px!important;
+}
+
+/* Keep fullscreen overflow inside the content pane, below the close controls. */
+.chart-dialog[open]{overflow:hidden;box-sizing:border-box}
+.chart-dialog[open]>.chart-modal-toolbar{min-width:0}
+.chart-dialog[open]>.chart-modal-toolbar h2{min-width:0;overflow-wrap:anywhere}
+.chart-dialog[open]>.chart-frame-content{
+  min-width:0;min-height:0;width:100%;overflow-x:hidden;overflow-y:auto;
+  overscroll-behavior:contain;scrollbar-gutter:stable;
+}
+.chart-dialog[open]>.chart-frame-content>:is(.panel,.ui-card,.calendar-explorer){
+  flex:1 0 auto;min-width:0;max-width:100%;min-height:100%;height:auto;box-sizing:border-box;
+}
+.chart-dialog[open] :is(.ui-card-content,.panel-heading>div,.ui-card-header>div,.journey-detail,.journey-breakdowns>div){min-width:0;max-width:100%}
+.chart-dialog[open] :is(.journey-scroll,.training-timeline-chart,.contribution-scroll){
+  min-width:0;width:100%;max-width:100%;flex-shrink:0;overflow:auto;overscroll-behavior:contain;
+}
+.chart-dialog[open] :is(.activity-chart,.insight-chart,.instructor-chart,.year-history-chart,.training-time-chart,.donut-wrap,.calendar-stage){flex-shrink:0;min-width:0;max-width:100%}
+.chart-dialog[open] :is(.chart-legend,.chart-bottom,.history-summary,.contribution-footer,.training-calendar-summary){flex-wrap:wrap;gap:8px 14px}
+.chart-dialog[open] :is(.journey-detail,.timeline-session-detail,.contribution-details,.venue-summary){overflow-wrap:anywhere}
+.chart-dialog[open] .journey-scroll svg{height:auto;min-height:0}
+.chart-dialog[open] .training-timeline-svg{max-height:none;flex-shrink:0}
+.chart-dialog[open] :is(.recharts-tooltip-wrapper,.ui-tooltip){max-width:min(300px,calc(100% - 24px));white-space:normal;overflow-wrap:anywhere}
+.chart-dialog[open] .recharts-default-tooltip{max-width:100%;white-space:normal!important}
+@media(pointer:coarse) and (max-height:600px) and (orientation:landscape), (pointer:coarse) and (max-width:1000px) and (orientation:portrait){
+  .chart-dialog[open] .training-timeline-svg{min-width:0;width:100%;height:auto}
+  .chart-dialog[open] .contribution-chart{--cell-size:14px;--cell-gap:4px}
+  .chart-dialog[open] .chart-modal-actions{gap:4px}
+  .chart-dialog[open] .chart-close{flex-shrink:0}
+  .chart-dialog[open] .journey-breakdowns{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
