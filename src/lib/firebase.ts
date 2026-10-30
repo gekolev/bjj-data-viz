@@ -23,9 +23,16 @@ export const firebaseApp = getApps().length ? getApp() : initializeApp(firebaseC
 export const auth = getAuth(firebaseApp)
 export const db = getFirestore(firebaseApp)
 
+// Never initialize the SDK on dev servers or locally previewed production builds.
+const analyticsEnabled = () => import.meta.env.PROD && typeof window !== 'undefined'
+  && !['localhost', '::1', '[::1]', '0.0.0.0'].includes(window.location.hostname)
+  && !window.location.hostname.endsWith('.localhost')
+  && !/^127\./.test(window.location.hostname)
+
 // Share initialization so early events wait for Analytics to become available.
 let analyticsReady: Promise<import('firebase/analytics').Analytics | null> | undefined
 const analytics = () => analyticsReady ??= (async () => {
+  if (!analyticsEnabled()) return null
   try {
     const { getAnalytics, isSupported } = await import('firebase/analytics')
     return await isSupported() ? getAnalytics(firebaseApp) : null
@@ -40,6 +47,7 @@ export async function initializeAnalytics(): Promise<void> {
 
 /** Send only curated metadata; never pass user text, filenames, or CSV contents. */
 export function trackEvent(name: string, params: Record<string, string | number | boolean> = {}): void {
+  if (!analyticsEnabled()) return
   void (async () => {
     try {
       const instance = await analytics()

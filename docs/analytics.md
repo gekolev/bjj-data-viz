@@ -22,3 +22,5 @@ page_visit is a custom navigation event, separate from automatically collected p
 No email addresses, names, training notes, gym/instructor names, search text, filenames, or CSV contents are explicitly included in custom event parameters. The SDK's existing automatic metadata collection remains in effect. Unsupported browsers or blocked analytics do not prevent app usage. Analytics calls are best-effort and not awaited by saving flows; counts can be lower than actual usage due to blockers or network failures.
 
 Reference: https://firebase.google.com/docs/analytics/web/events
+
+Analytics is disabled in Vite development mode and on localhost, *.localhost, 127.* loopback, IPv6 loopback, and 0.0.0.0, including locally previewed production builds. The SDK is not initialized in these environments, so automatic and custom events are disabled.
