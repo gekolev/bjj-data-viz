@@ -23,7 +23,7 @@ export default function SessionSpiral({ sessions, ranks = [] }: { sessions: Sess
   const [hovered, setHovered] = useState<number | null>(null)
   const [selected, setSelected] = useState<number | null>(null)
   const [error, setError] = useState(false)
-  const [topView, setTopView] = useState(true)
+  const [topView, setTopView] = useState(false)
   const detail = ordered[selected ?? hovered ?? -1]
   const activePoint = useRef<number | null>(null)
   useEffect(() => { activePoint.current = selected ?? hovered }, [selected, hovered])
