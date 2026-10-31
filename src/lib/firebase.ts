@@ -42,7 +42,49 @@ const analytics = () => analyticsReady ??= (async () => {
 })()
 
 export async function initializeAnalytics(): Promise<void> {
-  await analytics()
+  const instance = await analytics()
+  if (!instance) return
+  try {
+    const { logEvent } = await import('firebase/analytics')
+    const coarsePointer = window.matchMedia('(pointer: coarse)').matches
+    const standalone = window.matchMedia('(display-mode: standalone)').matches
+    logEvent(instance, 'client_context', {
+      viewport_width: window.innerWidth,
+      viewport_height: window.innerHeight,
+      pixel_ratio: Math.round(window.devicePixelRatio * 100) / 100,
+      orientation: window.matchMedia('(orientation: portrait)').matches ? 'portrait' : 'landscape',
+      color_scheme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+      input_type: coarsePointer ? 'touch' : 'pointer',
+      display_mode: standalone ? 'standalone' : 'browser',
+    })
+  } catch { /* Analytics must never interrupt app startup. */ }
+}
+
+/** Associate signed-in activity across devices without sending email or other PII. */
+export function setAnalyticsUser(userId: string | null): void {
+  if (!analyticsEnabled()) return
+  void (async () => {
+    try {
+      const instance = await analytics()
+      if (!instance) return
+      const { setUserId, setUserProperties } = await import('firebase/analytics')
+      setUserId(instance, userId)
+      setUserProperties(instance, { account_state: userId ? 'signed_in' : 'guest' })
+    } catch { /* Analytics must never interrupt authentication. */ }
+  })()
+}
+
+/** Set low-cardinality product state only; never pass user-entered content. */
+export function setAnalyticsUserProperties(properties: Record<string, string>): void {
+  if (!analyticsEnabled()) return
+  void (async () => {
+    try {
+      const instance = await analytics()
+      if (!instance) return
+      const { setUserProperties } = await import('firebase/analytics')
+      setUserProperties(instance, properties)
+    } catch { /* Analytics must never interrupt the app. */ }
+  })()
 }
 
 /** Send only curated metadata; never pass user text, filenames, or CSV contents. */

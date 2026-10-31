@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { createUserWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, updateProfile } from 'firebase/auth'
 import { X, Mail, UserRound } from 'lucide-react'
-import { auth } from '../lib/firebase'
+import { auth, trackEvent } from '../lib/firebase'
 import { authError } from '../lib/authErrors'
 import { useAccount } from './AccountContext'
 import './Account.css'
@@ -19,9 +19,9 @@ export default function AccountModal({ onClose, pending, onDeleteRecords, record
   const [error, setError] = useState('')
   const dialog = useRef<HTMLDialogElement>(null)
   useEffect(() => { const previous = document.activeElement as HTMLElement | null; dialog.current?.showModal(); return () => { previous?.focus() } }, [])
-  const run = async (action: () => Promise<void>) => {
+  const run = async (action: () => Promise<void>, actionName?: string) => {
     setBusy(true); setError(''); setMessage('')
-    try { await action() } catch (cause) { setError(authError(cause)) } finally { setBusy(false) }
+    try { await action() } catch (cause) { if (actionName) trackEvent('auth_action_failed', { action: actionName }); setError(authError(cause)) } finally { setBusy(false) }
   }
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -29,19 +29,22 @@ export default function AccountModal({ onClose, pending, onDeleteRecords, record
     void run(async () => {
       if (mode === 'reset') {
         await sendPasswordResetEmail(auth, email.trim())
+        trackEvent('password_reset_requested', { method: 'email' })
         setMessage('If an account uses this email, a password reset link will arrive shortly.')
       } else if (mode === 'signup') {
         const credential = await createUserWithEmailAndPassword(auth, email.trim(), password)
         setPassword('')
         await updateProfile(credential.user, { displayName: name.trim() })
         await sendEmailVerification(credential.user)
+        trackEvent('sign_up', { method: 'email' })
         setMessage('Check your inbox for a verification link. Your browser data stays here until you choose to import it.')
       } else {
         await signInWithEmailAndPassword(auth, email.trim(), password)
+        trackEvent('login', { method: 'email' })
         setPassword('')
         setMessage('Logged in. Your account data will load after email verification.')
       }
-    })
+    }, mode)
   }
   return <dialog ref={dialog} className="account-dialog" aria-labelledby="account-title" onCancel={event => { if (busy) event.preventDefault(); else onClose() }} onClick={event => { if (event.target === event.currentTarget && !busy) onClose() }}>
     <div className="account-modal">
@@ -53,11 +56,11 @@ export default function AccountModal({ onClose, pending, onDeleteRecords, record
         <strong>{user.displayName || 'My training'}</strong>
         {!user.emailVerified ? <><p><Mail size={17} /> Open the verification link in your inbox, then check your status below.</p><button className="button button-primary" disabled={busy} onClick={() => void run(async () => { await refresh(); setMessage(auth.currentUser?.emailVerified ? 'Email verified. Your cloud workspace is ready.' : 'Your email is not verified yet. Open the link in your inbox first.') })}>I’ve verified my email</button><button className="button button-outline" disabled={busy} onClick={() => void run(async () => { await sendEmailVerification(user); setMessage('Verification email sent. Check your inbox and spam folder.') })}>Resend verification email</button></> : <p>Your email is verified. Your training is saved to your account when cloud saving succeeds.</p>}
         <button className="button button-outline" disabled={busy} onClick={() => void run(async () => { await sendPasswordResetEmail(auth, user.email!); setMessage('Password reset email sent.') })}>Send password reset email</button>
-        <button className="button button-outline" disabled={busy || pending} onClick={() => void run(async () => { await signOut(auth); onClose() })}>Log out</button>
+        <button className="button button-outline" disabled={busy || pending} onClick={() => void run(async () => { await signOut(auth); trackEvent('logout'); onClose() }, 'logout')}>Log out</button>
         {user.emailVerified && <div className="account-delete-records">
           {!confirmDelete ? <button type="button" className="account-link" disabled={busy || pending || !recordsReady} onClick={() => { setConfirmDelete(true); setMessage(''); setError('') }}>Delete all account records</button> : <div className="account-delete-confirm">
             <p>Remove all manual sessions, imported sessions, and rank records from your account history? Records will be marked as deleted in the database. Your profile will remain.</p>
-            <div><button type="button" className="button account-delete-button" disabled={busy || pending || !recordsReady} onClick={() => void run(async () => { if (await onDeleteRecords()) { setConfirmDelete(false); setMessage('All account training records removed from your history.') } else { setError('Records could not all be deleted. Please retry once your account is connected.') } })}>{busy ? 'Deleting...' : 'Delete all records'}</button><button type="button" className="button button-outline" disabled={busy || pending} onClick={() => setConfirmDelete(false)}>Cancel</button></div>
+            <div><button type="button" className="button account-delete-button" disabled={busy || pending || !recordsReady} onClick={() => void run(async () => { if (await onDeleteRecords()) { trackEvent('account_records_deleted'); setConfirmDelete(false); setMessage('All account training records removed from your history.') } else { trackEvent('account_records_delete_failed'); setError('Records could not all be deleted. Please retry once your account is connected.') } }, 'delete_records')}>{busy ? 'Deleting...' : 'Delete all records'}</button><button type="button" className="button button-outline" disabled={busy || pending} onClick={() => setConfirmDelete(false)}>Cancel</button></div>
             {recordsError && <p className="account-error" role="alert">{recordsError}</p>}
           </div>}
         </div>}

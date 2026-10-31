@@ -1,4 +1,4 @@
-import { trackEvent } from './lib/firebase'
+import { setAnalyticsUserProperties, trackEvent } from './lib/firebase'
 import { lazy, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
 import Papa from 'papaparse'
 import type { CsvImport } from './lib/importStorage'
@@ -130,6 +130,10 @@ function App() {
   }, [csvImport, manualSessions])
   const allocation = useMemo(() => allocateTrainingStyles(sourceSessions), [sourceSessions])
   const sessions = allocation.sessions
+  useEffect(() => {
+    const dataState = demoEnabled ? 'demo' : savedCsvImport && manualSessions.length ? 'mixed' : savedCsvImport ? 'imported' : manualSessions.length ? 'manual' : 'empty'
+    setAnalyticsUserProperties({ data_state: dataState, has_rank_history: rankHistory.length ? 'yes' : 'no' })
+  }, [demoEnabled, manualSessions.length, rankHistory.length, savedCsvImport])
   const [activePage, setActivePage] = useState<Page>(pageFromPath)
   const overviewDashboard = useRef<HTMLDivElement>(null)
   useOverviewReveal(overviewDashboard, activePage === 'overview', demoEnabled)
@@ -246,6 +250,7 @@ function App() {
     const request = ++demoRequest.current
     if (demoLoading) { setDemoLoading(false); setUploadMessage('Demo loading cancelled.'); return }
     if (demoEnabled) {
+      trackEvent('demo_toggled', { state: 'off' })
       setDemoImport(null)
       setSetupRevision(revision => revision + 1)
       setUploadMessage('Demo data turned off. Your training data has been restored.')
@@ -259,13 +264,14 @@ function App() {
       sessionsFromCsv(new File([demoCsv], 'gymdesk-all-attendance-2026-10-03.csv', { type: 'text/csv' }), (rows, error, ranks = []) => {
         if (request !== demoRequest.current) return
         if (error) { setUploadMessage(error); return }
+        trackEvent('demo_toggled', { state: 'on' })
         setDemoImport({ fileName: 'Demo data', sessions: rows, ranks })
         setSetupRevision(revision => revision + 1)
         setQuery(''); setStyleFilter('All styles'); setPeriod('All time')
         if (rows.length) setAnnualYear(Math.max(...rows.map(row => row.date.getFullYear())))
         setUploadMessage('')
       })
-    } catch { if (request === demoRequest.current) setUploadMessage('Demo data couldn’t load. Please try again.') }
+    } catch { if (request === demoRequest.current) { trackEvent('demo_load_failed', { reason: 'load_error' }); setUploadMessage('Demo data couldn’t load. Please try again.') } }
     finally { if (request === demoRequest.current) setDemoLoading(false) }
   }
 
@@ -304,6 +310,7 @@ function App() {
   const removeFile = async () => {
     if (user || workspace.busy || !workspace.ready) return
     if (!await removeImport()) return
+    trackEvent('csv_import_removed', { storage: 'browser' })
     importRequest.current++
     setUploadMessage('CSV removed from this browser. ' + (manualSessions.length ? 'Your manual log is still available.' : 'Import a CSV, log training, or turn on Demo data to get started.'))
     setQuery(''); setStyleFilter('All styles'); setPeriod('All time')
@@ -316,6 +323,7 @@ function App() {
   }
 
   const downloadTemplate = () => {
+    trackEvent('file_download', { file_name: 'training_csv_template', file_extension: 'csv' })
     const csv = 'Training,Date / Time / Duration\n"Fundamentals - NoGi - Your gym | Instructor","Oct 1, 2026 5:42 PM 1h 10m"\n'
     const link = document.createElement('a')
     link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
@@ -356,7 +364,7 @@ function App() {
       </aside>
 
       <main className="main-area">
-        <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><strong>{activePage === 'wrapped' ? 'Year Wrapped' : activePage === 'log' ? 'Log training' : activePage === 'overview' ? 'Overview' : activePage === 'sessions' ? 'Sessions' : activePage === 'instructions' ? 'Get your CSV' : '3D Data Lab'}</strong></div><div className="top-actions">{csvImport && !demoEnabled && <div className="current-csv" title={`${csvImport.fileName} — ${demoEnabled ? 'Demo preview' : workspace.cloud ? 'Saved to your account' : savedLocally ? 'Saved only in this browser' : 'Session only'}`}><FileSpreadsheet size={15} /><span className="current-csv-name">{csvImport.fileName}</span>{!user && !demoEnabled && <button className="current-csv-remove" aria-label={`Remove ${csvImport.fileName} and delete its saved data`} title="Remove CSV and delete saved data" disabled={!workspace.ready || workspace.busy} onClick={() => void removeFile()}><X size={14} /></button>}</div>}{!user && <DemoToggle enabled={demoEnabled} prompt={workspace.ready && !savedCsvImport && manualSessions.length === 0 && !demoEnabled} onToggle={toggleDemo} />}<span className="sync-status" style={demoEnabled ? { visibility: 'hidden' } : undefined} aria-hidden={demoEnabled}><span className="status-dot" /> {workspace.cloud ? workspace.status : savedCsvImport || manualData.initialized ? 'Saved in this browser' : 'No training data'}</span><button className="icon-button" aria-label="CSV export instructions" onClick={() => goToPage('instructions')}><CircleHelp size={17} /></button><button className="icon-button theme-toggle" aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} aria-pressed={theme === 'dark'} onClick={toggleTheme}>{theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}</button><button className="top-avatar account-avatar-button" aria-label="Open profile" onClick={() => setAccountOpen(true)}>{(user?.displayName || 'B').slice(0, 1).toUpperCase()}</button></div></header>
+        <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><strong>{activePage === 'wrapped' ? 'Year Wrapped' : activePage === 'log' ? 'Log training' : activePage === 'overview' ? 'Overview' : activePage === 'sessions' ? 'Sessions' : activePage === 'instructions' ? 'Get your CSV' : '3D Data Lab'}</strong></div><div className="top-actions">{csvImport && !demoEnabled && <div className="current-csv" title={`${csvImport.fileName} — ${demoEnabled ? 'Demo preview' : workspace.cloud ? 'Saved to your account' : savedLocally ? 'Saved only in this browser' : 'Session only'}`}><FileSpreadsheet size={15} /><span className="current-csv-name">{csvImport.fileName}</span>{!user && !demoEnabled && <button className="current-csv-remove" aria-label={`Remove ${csvImport.fileName} and delete its saved data`} title="Remove CSV and delete saved data" disabled={!workspace.ready || workspace.busy} onClick={() => void removeFile()}><X size={14} /></button>}</div>}{!user && <DemoToggle enabled={demoEnabled} prompt={workspace.ready && !savedCsvImport && manualSessions.length === 0 && !demoEnabled} onToggle={toggleDemo} />}<span className="sync-status" style={demoEnabled ? { visibility: 'hidden' } : undefined} aria-hidden={demoEnabled}><span className="status-dot" /> {workspace.cloud ? workspace.status : savedCsvImport || manualData.initialized ? 'Saved in this browser' : 'No training data'}</span><button className="icon-button" aria-label="CSV export instructions" onClick={() => goToPage('instructions')}><CircleHelp size={17} /></button><button className="icon-button theme-toggle" aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} aria-pressed={theme === 'dark'} onClick={() => { trackEvent('theme_changed', { theme: theme === 'dark' ? 'light' : 'dark' }); toggleTheme() }}>{theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}</button><button className="top-avatar account-avatar-button" aria-label="Open profile" onClick={() => setAccountOpen(true)}>{(user?.displayName || 'B').slice(0, 1).toUpperCase()}</button></div></header>
         <div className={`content${activePage === 'overview' ? ' overview-content' : ''}`}>
           <OverviewSetup key={activePage} panel={activePage === 'overview'} hasData={sessions.length > 0 || rankHistory.length > 0} loadRevision={setupRevision}>
           {user && !user.emailVerified && <div className="account-banner"><p>Verify your email to save training to your account. You’re currently using this browser’s guest data.</p><button className="button button-outline" onClick={() => setAccountOpen(true)}>Verify email</button></div>}
@@ -380,7 +388,7 @@ function App() {
             <section className="overview-period-bar" aria-label="Overview period filter">
               <div className="overview-period-controls">
                 <div><div className="section-title"><span className="live-dot" /> AT A GLANCE</div><strong className="overview-period-title">Overview period</strong></div>
-                <label className="overview-period-select"><CalendarDays size={18} /><span className="visually-hidden">Overview period</span><select value={period} onChange={(event) => setPeriod(event.target.value)} aria-describedby="overview-period-scope"><option>All time</option><option>12 months</option><option>90 days</option><option>30 days</option><option>This year</option></select><ChevronDown size={16} /></label>
+                <label className="overview-period-select"><CalendarDays size={18} /><span className="visually-hidden">Overview period</span><select value={period} onChange={(event) => { setPeriod(event.target.value); trackEvent('filter_changed', { filter_type: 'period', filter_state: event.target.value === 'All time' ? 'cleared' : 'applied' }) }} aria-describedby="overview-period-scope"><option>All time</option><option>12 months</option><option>90 days</option><option>30 days</option><option>This year</option></select><ChevronDown size={16} /></label>
                 <span className="overview-period-count" role="status">{filteredSessions.length} sessions <span>· through {shortDate(newest)}, {newest.getFullYear()}</span></span>
               </div>
               <details className="overview-period-help"><summary id="overview-period-scope">Filters totals and session breakdowns · see affected charts</summary><p>Applies to the four summary cards, Gi vs. No-Gi, Class types, Weekly rhythm, Coaches &amp; academy, Training time of day, and Recent sessions. These charts show a matching period label.</p><p>The training calendar and Training activity use their year selector. Both training timelines and Year over year show the full history. Rolling periods end at your latest training date.</p></details>
@@ -407,7 +415,7 @@ function App() {
             <ChartFrame title="Training calendar"><TrainingCalendar ranks={rankHistory} sessions={sessions} year={selectedYear} years={availableYears} onYearChange={setAnnualYear} styleFilter={styleFilter} query={query} /></ChartFrame>
 
             <div className="charts-grid">
-              <ChartFrame title="Training activity"><section className="panel activity-panel"><div className="panel-heading"><div><h2>Training activity</h2><p>Yearly attendance · busiest month: {busiestMonth.sessions ? busiestMonth.month : '—'}</p><p className="chart-explanation">Red bars count sessions; charcoal bars show mat hours. Months without sessions remain visible as zero.</p></div><label className="year-select"><span>YEAR</span><select value={selectedYear} onChange={(event) => setAnnualYear(Number(event.target.value))}>{availableYears.map((year) => <option key={year} value={year}>{year}</option>)}</select><ChevronDown size={12} /></label></div><div className="chart-legend"><span><i className="legend-swatch lime" />Sessions</span><span><i className="legend-swatch lavender" />Hours on mat</span></div><div className="activity-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={annualData} margin={{ top: 7, right: 12, left: -18, bottom: 0 }} barGap={3}><CartesianGrid vertical={false} stroke="var(--chart-grid)" strokeDasharray="4 5" /><XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fill: 'var(--chart-text)', fontSize: 12 }} dy={10} /><YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: 'var(--chart-text)', fontSize: 12 }} /><Tooltip cursor={{ fill: 'var(--chart-hover)' }} contentStyle={{ border: '1px solid #e7e7e7', borderRadius: 10, fontSize: 14, boxShadow: '0 8px 25px #22222212' }} /><Bar dataKey="sessions" name="Sessions" fill="#dc2626" radius={[5, 5, 0, 0]} maxBarSize={19} /><Bar dataKey="hours" name="Hours on mat" fill="var(--chart-secondary)" radius={[5, 5, 0, 0]} maxBarSize={19} /></BarChart></ResponsiveContainer></div><div className="chart-bottom"><span><span className="bottom-dot" /> {annualData.reduce((sum, item) => sum + item.sessions, 0)} sessions in {selectedYear}</span><span>{selectedYear} <CalendarDays size={13} /></span></div><PromotionSummary ranks={rankHistory} year={selectedYear} /></section></ChartFrame>
+              <ChartFrame title="Training activity"><section className="panel activity-panel"><div className="panel-heading"><div><h2>Training activity</h2><p>Yearly attendance · busiest month: {busiestMonth.sessions ? busiestMonth.month : '—'}</p><p className="chart-explanation">Red bars count sessions; charcoal bars show mat hours. Months without sessions remain visible as zero.</p></div><label className="year-select"><span>YEAR</span><select value={selectedYear} onChange={(event) => { setAnnualYear(Number(event.target.value)); trackEvent('filter_changed', { filter_type: 'activity_year', filter_state: 'applied' }) }}>{availableYears.map((year) => <option key={year} value={year}>{year}</option>)}</select><ChevronDown size={12} /></label></div><div className="chart-legend"><span><i className="legend-swatch lime" />Sessions</span><span><i className="legend-swatch lavender" />Hours on mat</span></div><div className="activity-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={annualData} margin={{ top: 7, right: 12, left: -18, bottom: 0 }} barGap={3}><CartesianGrid vertical={false} stroke="var(--chart-grid)" strokeDasharray="4 5" /><XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fill: 'var(--chart-text)', fontSize: 12 }} dy={10} /><YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: 'var(--chart-text)', fontSize: 12 }} /><Tooltip cursor={{ fill: 'var(--chart-hover)' }} contentStyle={{ border: '1px solid #e7e7e7', borderRadius: 10, fontSize: 14, boxShadow: '0 8px 25px #22222212' }} /><Bar dataKey="sessions" name="Sessions" fill="#dc2626" radius={[5, 5, 0, 0]} maxBarSize={19} /><Bar dataKey="hours" name="Hours on mat" fill="var(--chart-secondary)" radius={[5, 5, 0, 0]} maxBarSize={19} /></BarChart></ResponsiveContainer></div><div className="chart-bottom"><span><span className="bottom-dot" /> {annualData.reduce((sum, item) => sum + item.sessions, 0)} sessions in {selectedYear}</span><span>{selectedYear} <CalendarDays size={13} /></span></div><PromotionSummary ranks={rankHistory} year={selectedYear} /></section></ChartFrame>
 
               <ChartFrame title="Gi vs. No-Gi"><section className="panel style-panel"><div className="panel-heading"><div><h2>Gi vs. No-Gi</h2><span className="chart-period-label"><CalendarDays size={12} />Period: {period}</span><p>Share of sessions by training uniform</p><p className="chart-explanation">Counts Gi, No-Gi, and any unclassified sessions.</p></div>
                 <button className="subtle-icon" aria-label="Style chart settings"><MoreHorizontal size={18} /></button>

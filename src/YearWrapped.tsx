@@ -5,6 +5,7 @@ import { ArrowUpRight, Flame, Sparkles, Download, GraduationCap, Trophy, Layers,
 import './YearWrapped.css'
 import { buildArrivalSummary } from './lib/trainingJourney'
 import { chooseWrappedPalettes, emailWrappedPalettes, wrappedPaletteStyle } from './lib/wrappedPalettes'
+import { trackEvent } from './lib/firebase'
 
 type RecapSession = { date: Date; duration: number; style: string; instructor: string; classType: string; durationEstimated?: boolean; styleEstimated?: boolean; timeRecorded?: boolean }
 
@@ -59,6 +60,7 @@ export default function YearWrapped({ sessions, sample, profileEmail }: { sessio
   const [viewingCard, setViewingCard] = useState<number | null>(null)
   const [viewerCards, setViewerCards] = useState<HTMLElement[]>([])
   const openViewer = (index: number) => {
+    trackEvent('select_content', { content_type: 'wrapped_card', item_id: String(index + 1), data_source: sample ? 'demo' : 'user' })
     setViewerCards(Array.from(gridRef.current?.querySelectorAll<HTMLElement>('.wrap-card') ?? []))
     setViewingCard(index)
   }
@@ -89,6 +91,7 @@ export default function YearWrapped({ sessions, sample, profileEmail }: { sessio
     setSendingEmail(true)
     setEmailMessage('Preparing your cards...')
     setExportMessage('')
+    trackEvent('wrapped_email_started', { data_source: sample ? 'demo' : 'user' })
     try {
       const latest = rows.reduce((last, row) => row.date > last ? row.date : last, rows[0].date)
       const latestTraining = `${latest.getFullYear()}-${String(latest.getMonth() + 1).padStart(2, '0')}-${String(latest.getDate()).padStart(2, '0')}`
@@ -98,7 +101,9 @@ export default function YearWrapped({ sessions, sample, profileEmail }: { sessio
         estimated: rows.some(row => row.durationEstimated || row.styleEstimated),
       }, JSON.stringify({ rows, palettes }), (count, total) => setEmailMessage(`Preparing card ${count} of ${total}...`))
       setEmailMessage(`Your ${year} Wrapped has been submitted for delivery to ${email.trim()}. Check your inbox and spam folder.`)
+      trackEvent('wrapped_email_succeeded', { data_source: sample ? 'demo' : 'user' })
     } catch (error) {
+      trackEvent('wrapped_email_failed', { reason: 'request_failed', data_source: sample ? 'demo' : 'user' })
       setEmailMessage(error instanceof Error ? error.message : 'Email could not be sent. Please try again.')
     } finally {
       setSaving(false)
@@ -114,8 +119,10 @@ export default function YearWrapped({ sessions, sample, profileEmail }: { sessio
     try {
       const { exportRecapCard } = await import('./lib/exportRecap')
       await exportRecapCard(card, year, index)
+      trackEvent('wrapped_export_succeeded', { export_type: 'card', card_number: index + 1, data_source: sample ? 'demo' : 'user' })
       setExportMessage(`Card ${index + 1} is ready as a PNG image.`)
     } catch (error) {
+      trackEvent('wrapped_export_failed', { export_type: 'card', reason: 'render_failed', data_source: sample ? 'demo' : 'user' })
       console.error('Card export failed', error)
       setExportMessage('Could not save this card. Please try again.')
     } finally {
@@ -130,8 +137,10 @@ export default function YearWrapped({ sessions, sample, profileEmail }: { sessio
     try {
       const { exportRecap } = await import('./lib/exportRecap')
       await exportRecap(gridRef.current, year, (count, total) => setExportMessage(`Creating card ${count} of ${total}...`))
+      trackEvent('wrapped_export_succeeded', { export_type: 'recap', data_source: sample ? 'demo' : 'user' })
       setExportMessage('Your ZIP download is ready, with one PNG image per card.')
     } catch (error) {
+      trackEvent('wrapped_export_failed', { export_type: 'recap', reason: 'render_failed', data_source: sample ? 'demo' : 'user' })
       console.error('Recap export failed', error)
       setExportMessage('Could not save your images. Please try again in a browser that supports SVG image export.')
     } finally {
