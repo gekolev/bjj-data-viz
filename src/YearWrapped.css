@@ -86,3 +86,10 @@
 .wrapped-viewer-stage>.wrap-card:hover{transform:none;box-shadow:none}
 @media(min-width:821px){.wrapped-viewer-stage .wrap-number{font-size:100px}.wrapped-viewer-stage .wrap-hero h2{font-size:70px}}
 @media(max-width:560px){.wrapped-viewer{padding:12px}.wrapped-viewer-shell{gap:8px}.wrapped-viewer-stage>.wrap-card{min-height:0}.wrapped-toolbar>div{flex-wrap:wrap}}
+
+/* Attribution stays visible when a card is shared outside MatMetrics. */
+.wrap-card::after{content:'matmetrics.gekolev.com';position:absolute;left:24px;right:24px;bottom:9px;z-index:2;text-align:center;color:inherit;font-size:10px;font-weight:600;line-height:1.2;letter-spacing:.55px;opacity:.58}
+.wrapped-viewer-toolbar .wrapped-viewer-share{padding-inline:14px}
+.wrapped-viewer-status{min-height:18px;margin:-4px 0 0;text-align:center;color:#d4d4d8;font-size:13px;line-height:1.35}
+.wrapped-viewer-status:empty{min-height:0}
+@media(max-width:400px){.wrapped-viewer-toolbar .wrapped-viewer-share>span{display:none}.wrapped-viewer-toolbar .wrapped-viewer-share{padding-inline:8px}.wrap-card::after{font-size:2.3cqw;bottom:2.2cqw}}

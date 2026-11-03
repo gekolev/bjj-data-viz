@@ -130,6 +130,23 @@ export default function YearWrapped({ sessions, sample, profileEmail }: { sessio
       setSavingCard(null)
     }
   }
+  async function shareCard(index: number, file: File) {
+    const shareData = { title: `My ${year} MatMetrics Wrapped`, text: `My ${year} year on the mat — see yours at matmetrics.gekolev.com`, url: 'https://matmetrics.gekolev.com' }
+    if (navigator.share) {
+      const fileData = { ...shareData, files: [file] }
+      if (!navigator.canShare || navigator.canShare(fileData)) {
+        await navigator.share(fileData)
+        trackEvent('wrapped_export_succeeded', { export_type: 'share', card_number: index + 1, data_source: sample ? 'demo' : 'user' })
+        return 'Shared successfully.'
+      }
+      await navigator.share(shareData)
+      await downloadCard(index)
+      return 'The link was shared and the card image was saved for you to attach.'
+    }
+    await downloadCard(index)
+    try { await navigator.clipboard.writeText(`${shareData.text}\n${shareData.url}`) } catch { /* Download remains available as the fallback. */ }
+    return 'Card image saved. The share text and link were copied when supported.'
+  }
   async function downloadRecap() {
     if (!gridRef.current || saving) return
     setSaving(true)
@@ -169,6 +186,6 @@ export default function YearWrapped({ sessions, sample, profileEmail }: { sessio
         <div className="wrap-card-item"><article role="button" tabIndex={0} aria-label="View animated card" className="wrap-card wrap-bigday" data-palette={palettes[8]} style={wrappedPaletteStyle(8, palettes[8]) as CSSProperties}><div className="wrap-card-top"><span>YOUR BIG MAT DAY</span><Trophy size={23} /></div><div className="wrap-main"><div className="wrap-day-stamp">{biggestDayLabel}</div><strong className="wrap-number">{biggestDay?.[1] ?? 0}</strong><h2>{biggestDay?.[1] === 1 ? 'One session.\nStill a win.' : 'Back for more.'}</h2><p>{biggestDay?.[1] === 1 ? 'One session was your daily high this year.' : 'Sessions in a single day. Your biggest daily session count this year.'}{tiedDays > 1 ? ` You hit that high on ${tiedDays} different days.` : ''}</p></div><div className="wrap-card-bottom"><span>MAKE EVERY SESSION COUNT</span><span>09 / 09</span></div></article><button className="wrap-download" disabled={saving} onClick={() => void downloadCard(8)} aria-label="Download card 9 as PNG"><Download size={16} /> {savingCard === 8 ? 'Saving card...' : 'Save card as image'}</button></div>
       </div><div className="wrapped-footer"><Sparkles size={18} /><p>The best part? Your next chapter is still unwritten.</p><span>See you on the mat.</span></div>
     </>}
-    {viewingCard !== null && viewerCards.length > 0 && <WrappedViewer key={palettes.join('-')} cards={viewerCards} index={viewingCard} onChange={setViewingCard} onClose={() => setViewingCard(null)} />}
+    {viewingCard !== null && viewerCards.length > 0 && <WrappedViewer key={palettes.join('-')} cards={viewerCards} index={viewingCard} year={year} onChange={setViewingCard} onClose={() => setViewingCard(null)} onShare={shareCard} />}
   </section>
 }

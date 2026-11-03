@@ -18,6 +18,10 @@ function cardSource(card: HTMLElement, email = false) {
   const width = card.offsetWidth
   const height = card.offsetHeight
   const clone = snapshot(card)
+  const website = document.createElement('span')
+  website.textContent = 'matmetrics.gekolev.com'
+  website.setAttribute('style', 'position:absolute;left:24px;right:24px;bottom:9px;text-align:center;font:600 10px/1.2 sans-serif;letter-spacing:.55px;opacity:.58;color:inherit;z-index:2;')
+  clone.appendChild(website)
   clone.setAttribute('style', `${clone.getAttribute('style')}opacity:1;width:${width}px;height:${height}px;margin:0;`)
   clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml')
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><foreignObject width="100%" height="100%">${new XMLSerializer().serializeToString(clone)}</foreignObject></svg>`
@@ -55,6 +59,12 @@ export async function exportRecapCard(card: HTMLElement, year: number, index: nu
   await document.fonts.ready
   const png = await cardPng(cardSource(card))
   downloadBlob(new Blob([new Uint8Array(png)], { type: 'image/png' }), cardFilename(card, year, index))
+}
+
+export async function recapCardFile(card: HTMLElement, year: number, index: number) {
+  await document.fonts.ready
+  const png = await cardPng(cardSource(card))
+  return new File([new Uint8Array(png)], cardFilename(card, year, index), { type: 'image/png' })
 }
 
 function cardFilename(card: HTMLElement, year: number, index: number) {
