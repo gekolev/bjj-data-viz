@@ -44,6 +44,8 @@ const DevPage = lazy(() => import('./DevPage'))
 const YearWrapped = lazy(() => import('./YearWrapped'))
 const InstructionsPage = lazy(() => import('./InstructionsPage'))
 const PitchPage = lazy(() => import('./PitchPage'))
+const FeaturesPage = lazy(() => import('./FeaturesPage'))
+const ValuePage = lazy(() => import('./ValuePage'))
 
 type Session = {
   id: number
@@ -97,9 +99,11 @@ const formatDuration = (minutes: number) => {
 
 const shortDate = (date: Date) => new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(date)
 const COLORS = ['#dc2626', 'var(--chart-secondary)', '#d97706']
-type Page = 'wrapped' | 'log' | 'overview' | 'sessions' | 'dev' | 'instructions' | 'welcome'
+type Page = 'wrapped' | 'log' | 'overview' | 'sessions' | 'dev' | 'instructions' | 'welcome' | 'features' | 'value'
 
 function pageFromPath(): Page {
+  if (window.location.pathname.replace(/\/+$/, '') === '/value') return 'value'
+  if (window.location.pathname.replace(/\/+$/, '') === '/features') return 'features'
   if (window.location.pathname.replace(/\/+$/, '') === '/welcome') return 'welcome'
   if (window.location.pathname === '/wrapped') return 'wrapped'
   if (window.location.pathname === '/log') return 'log'
@@ -333,6 +337,8 @@ function App() {
   }
 
   if (activePage === 'welcome') return <><LazyPage><PitchPage onExplore={() => goToPage('overview')} onLog={() => goToPage('log')} /></LazyPage><ContactFooter /></>
+  if (activePage === 'features') return <LazyPage><FeaturesPage /></LazyPage>
+  if (activePage === 'value') return <LazyPage><ValuePage /></LazyPage>
 
   return (
     <div className={`app-shell${sidebarCollapsed ? ' sidebar-collapsed' : ''}`} onDragOver={(event) => { event.preventDefault(); setDragging(true) }} onDragLeave={(event) => { if (event.currentTarget === event.target) setDragging(false) }} onDrop={onDrop}>
